@@ -1,0 +1,83 @@
+name: Article Approval Gatekeeper
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  evaluate_and_merge:
+    runs-on: ubuntu-latest
+    # Only run if the PR is targeting the main branch and the review was an approval
+    if: github.event.pull_request.base.ref == 'main' && github.event.review.state == 'approved'
+    
+    steps:
+      - name: Evaluate Approval Thresholds
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.ORG_ADMIN_TOKEN }}
+          script: |
+            const orgName = context.repo.owner;
+            const repoName = context.repo.repo;
+            const prNumber = context.payload.pull_request.number;
+            const maintainerTeamSlug = 'maintainers'; 
+
+            console.log(`Evaluating PR #${prNumber} for FOSS Merge Conditions...`);
+
+            // 1. Get all reviews for this PR
+            const { data: reviews } = await github.rest.pulls.listReviews({
+              owner: orgName,
+              repo: repoName,
+              pull_number: prNumber,
+            });
+
+            // Extract unique users who APPROVED
+            const approvedUsers = new Set();
+            reviews.forEach(review => {
+              if (review.state === 'APPROVED') {
+                approvedUsers.add(review.user.login);
+              }
+            });
+
+            // 2. Get total Org Members
+            const { data: orgMembers } = await github.rest.orgs.listMembers({
+              org: orgName,
+            });
+            const totalOrgMembers = orgMembers.length;
+
+            // 3. Get Maintainer Team Members
+            let maintainers = [];
+            try {
+              const { data: teamMembers } = await github.rest.teams.listMembersInOrg({
+                org: orgName,
+                team_slug: maintainerTeamSlug,
+              });
+              maintainers = teamMembers.map(m => m.login);
+            } catch (error) {
+              console.log("Maintainers team not found or empty.");
+            }
+
+            // 4. THE LOGIC GATES
+            const allMaintainersApproved = maintainers.length > 0 && maintainers.every(m => approvedUsers.has(m));
+            const approvalPercentage = approvedUsers.size / totalOrgMembers;
+            const meets95Percent = approvalPercentage >= 0.95;
+
+            console.log(`Total Approvals: ${approvedUsers.size}`);
+            console.log(`Org Size: ${totalOrgMembers} (${(approvalPercentage * 100).toFixed(1)}%)`);
+            console.log(`Maintainers Approved: ${allMaintainersApproved}`);
+
+            // 5. THE VERDICT
+            if (allMaintainersApproved || meets95Percent) {
+              console.log("✅ Threshold met! Initiating automatic merge...");
+              
+              await github.rest.pulls.merge({
+                owner: orgName,
+                repo: repoName,
+                pull_number: prNumber,
+                merge_method: 'squash',
+                commit_title: `Auto-Merge: Article Approved by FOSS Community (#${prNumber})`
+              });
+              
+              console.log("Merge successful.");
+            } else {
+              console.log("⏳ Threshold not yet met. Waiting for more reviews.");
+            }
