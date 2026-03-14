@@ -1,0 +1,29 @@
+name: Publish Approved Submissions to Strapi CMS
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'content/submissions/**.md'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: npm install gray-matter
+
+      - name: Run Publisher Bot
+        env:
+          STRAPI_URL: ${{ secrets.STRAPI_URL }}
+          STRAPI_WRITE_TOKEN: ${{ secrets.STRAPI_WRITE_TOKEN }}
+        run: node publish.js
