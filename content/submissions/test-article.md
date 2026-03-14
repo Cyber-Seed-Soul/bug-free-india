@@ -1,11 +1,11 @@
 ---
-title: "My First Open Source Article"
+title: "My First Open Source Article (Updated Edition)"
 author: "ScientificSam"
 category: "Cybersecurity"
-tags: ["Privacy", "Security"]
+tags: ["Privacy", "Security","Data Protection"]
 ---
 
 # Welcome to my article!
 
 This is the main body of the text. The bot should read the data at the top and push this text into the Strapi rich-text field.
-Testing with an update to the .md file
+Testing with an update to the .md file using fields.

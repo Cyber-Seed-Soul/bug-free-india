@@ -5,7 +5,6 @@ const matter = require('gray-matter');
 const STRAPI_URL = process.env.STRAPI_URL;
 const STRAPI_TOKEN = process.env.STRAPI_WRITE_TOKEN;
 
-// Helper to interact with Strapi
 async function strapiRequest(endpoint, method = 'GET', body = null) {
     const options = {
         method,
@@ -23,23 +22,16 @@ async function strapiRequest(endpoint, method = 'GET', body = null) {
 
 async function runPublisher() {
     console.log("🚀 Starting Auto-Publisher...");
+    let hasError = false;
 
-    // 1. Map String Names to Strapi IDs
-    console.log("Fetching Categories and Tags from CMS...");
+    // 1. Fetch CMS Map
     const categoryData = await strapiRequest('categories');
     const tagData = await strapiRequest('tags');
     
     const categoryMap = {};
-    categoryData.data.forEach(c => {
-        const categoryName = c.name || c.attributes?.name;
-        categoryMap[categoryName] = c.id;
-    });
-
+    categoryData.data.forEach(c => categoryMap[c.name || c.attributes?.name] = c.id);
     const tagMap = {};
-    tagData.data.forEach(t => {
-        const tagName = t.name || t.attributes?.name;
-        tagMap[tagName] = t.id;
-    });
+    tagData.data.forEach(t => tagMap[t.name || t.attributes?.name] = t.id);
 
     // 2. Read Submissions
     const submissionsDir = path.join(__dirname, 'content', 'submissions');
@@ -49,38 +41,36 @@ async function runPublisher() {
         console.log(`\n📄 Processing: ${file}`);
         const content = fs.readFileSync(path.join(submissionsDir, file), 'utf8');
         const parsed = matter(content);
-        
         const { title, author, category, tags } = parsed.data;
 
-        // Guardrail: Check required fields
         if (!title || !author || !category) {
             console.error(`❌ Skipped: Missing required frontmatter in ${file}`);
+            hasError = true;
             continue;
         }
 
-        // Map Category & Tags to IDs
-        const categoryId = categoryMap[category];
-        const tagIds = (tags || []).map(t => tagMap[t]).filter(id => id);
+        // Auto-generate slug
+        const generatedSlug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
 
+        // Use exact capitalization matching your Strapi database fields
         const payload = {
             data: {
-                title: title,
-                content: parsed.content,
-                // Note: If you have an 'author' text field in Strapi, uncomment the next line
-                // author: author, 
-                category: categoryId,
-                tags: tagIds
+                Title: title,             // Capital T
+                slug: generatedSlug,
+                Content: parsed.content,  // Capital C
+                category: categoryMap[category],
+                tags: (tags || []).map(t => tagMap[t]).filter(id => id),
+                publishedAt: new Date().toISOString()
             }
         };
 
         try {
-            // Guardrail: Check if Article already exists (to Update instead of Create)
-            const search = await strapiRequest(`articles?filters[title][$eq]=${encodeURIComponent(title)}`);
+            // Use Capital 'Title' in the filter query
+            const search = await strapiRequest(`articles?filters[Title][$eq]=${encodeURIComponent(title)}`);
             
             if (search.data && search.data.length > 0) {
-                const articleId = search.data[0].id;
-                console.log(`Updating existing article (ID: ${articleId})...`);
-                await strapiRequest(`articles/${articleId}`, 'PUT', payload);
+                console.log(`Updating existing article (ID: ${search.data[0].id})...`);
+                await strapiRequest(`articles/${search.data[0].id}`, 'PUT', payload);
                 console.log(`✅ Updated successfully!`);
             } else {
                 console.log(`Creating new article...`);
@@ -89,8 +79,11 @@ async function runPublisher() {
             }
         } catch (error) {
             console.error(`❌ Failed to publish ${file}:`, error.message);
+            hasError = true;
         }
     }
+
+    if (hasError) process.exit(1); // Force GitHub Action to turn RED if anything fails
 }
 
 runPublisher();
