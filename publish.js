@@ -20,6 +20,32 @@ async function strapiRequest(endpoint, method = 'GET', body = null) {
     return res.json();
 }
 
+// Auto-Sync Function for Tags and Categories
+async function getOrCreateTerm(endpoint, termName, map) {
+    if (map[termName]) return map[termName]; // Already exists in CMS
+    
+    console.log(`➕ Auto-syncing new ${endpoint} to CMS: ${termName}`);
+    try {
+        // Standard Strapi schema convention uses 'Name' for tags/categories. 
+        // If your database uses 'Title' instead of 'Name', we will get a 400 error here.
+        const payload = { 
+            data: { 
+                Name: termName, 
+                publishedAt: new Date().toISOString() 
+            } 
+        };
+        const res = await strapiRequest(endpoint, 'POST', payload);
+        
+        // Handle Strapi v5 documentId vs Strapi v4 id
+        const newId = res.data.documentId || res.data.id; 
+        map[termName] = newId;
+        return newId;
+    } catch (e) {
+        console.error(`❌ Failed to create ${endpoint} '${termName}'. Error:`, e.message);
+        throw e;
+    }
+}
+
 async function runPublisher() {
     console.log("🚀 Starting Auto-Publisher...");
     let hasError = false;
@@ -29,9 +55,16 @@ async function runPublisher() {
     const tagData = await strapiRequest('tags');
     
     const categoryMap = {};
-    categoryData.data.forEach(c => categoryMap[c.name || c.attributes?.name] = c.id);
+    categoryData.data.forEach(c => {
+        const catName = c.name || c.Name || c.Title || c.attributes?.name || c.attributes?.Name;
+        if(catName) categoryMap[catName] = c.documentId || c.id; // Store documentId for v5 support
+    });
+    
     const tagMap = {};
-    tagData.data.forEach(t => tagMap[t.name || t.attributes?.name] = t.id);
+    tagData.data.forEach(t => {
+        const tagName = t.name || t.Name || t.Title || t.attributes?.name || t.attributes?.Name;
+        if(tagName) tagMap[tagName] = t.documentId || t.id;
+    });
 
     // 2. Read Submissions
     const submissionsDir = path.join(__dirname, 'content', 'submissions');
@@ -41,36 +74,46 @@ async function runPublisher() {
         console.log(`\n📄 Processing: ${file}`);
         const content = fs.readFileSync(path.join(submissionsDir, file), 'utf8');
         const parsed = matter(content);
-        const { title, author, category, tags } = parsed.data;
+        const { title, slug, category, tags } = parsed.data;
 
-        if (!title || !author || !category) {
-            console.error(`❌ Skipped: Missing required frontmatter in ${file}`);
+        if (!title || !slug || !category) {
+            console.error(`❌ Skipped: Missing title, slug, or category in ${file}`);
             hasError = true;
             continue;
         }
 
-        // Auto-generate slug
-        const generatedSlug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
-
-        // Use exact capitalization matching your Strapi database fields
-        const payload = {
-            data: {
-                Title: title,             // Capital T
-                slug: generatedSlug,
-                Content: parsed.content,  // Capital C
-                category: categoryMap[category],
-                tags: (tags || []).map(t => tagMap[t]).filter(id => id),
-                publishedAt: new Date().toISOString()
-            }
-        };
-
         try {
-            // Use Capital 'Title' in the filter query
-            const search = await strapiRequest(`articles?filters[Title][$eq]=${encodeURIComponent(title)}`);
+            // 3. AUTO-SYNC: Ensure Category and Tags exist in CMS
+            const categoryId = await getOrCreateTerm('categories', category, categoryMap);
+            
+            const tagIds = [];
+            if (tags && Array.isArray(tags)) {
+                for (const t of tags) {
+                    const tId = await getOrCreateTerm('tags', t, tagMap);
+                    tagIds.push(tId);
+                }
+            }
+
+            // 4. Build Payload
+            const payload = {
+                data: {
+                    Title: title,
+                    slug: slug,
+                    Content: parsed.content,
+                    category: categoryId,
+                    tags: tagIds,
+                    publishedAt: new Date().toISOString()
+                }
+            };
+
+            // 5. Update or Create (Using SLUG as the unbreakable anchor)
+            const search = await strapiRequest(`articles?filters[slug][$eq]=${encodeURIComponent(slug)}`);
             
             if (search.data && search.data.length > 0) {
-                console.log(`Updating existing article (ID: ${search.data[0].id})...`);
-                await strapiRequest(`articles/${search.data[0].id}`, 'PUT', payload);
+                // Strapi v5 FIX: Use documentId instead of id
+                const targetId = search.data[0].documentId || search.data[0].id; 
+                console.log(`Updating existing article (ID/DocID: ${targetId})...`);
+                await strapiRequest(`articles/${targetId}`, 'PUT', payload);
                 console.log(`✅ Updated successfully!`);
             } else {
                 console.log(`Creating new article...`);
@@ -78,12 +121,12 @@ async function runPublisher() {
                 console.log(`✅ Created successfully!`);
             }
         } catch (error) {
-            console.error(`❌ Failed to publish ${file}:`, error.message);
+            console.error(`❌ Failed to process ${file}:`, error.message);
             hasError = true;
         }
     }
 
-    if (hasError) process.exit(1); // Force GitHub Action to turn RED if anything fails
+    if (hasError) process.exit(1);
 }
 
 runPublisher();
