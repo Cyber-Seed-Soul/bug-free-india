@@ -30,10 +30,16 @@ async function runPublisher() {
     const tagData = await strapiRequest('tags');
     
     const categoryMap = {};
-    categoryData.data.forEach(c => categoryMap[c.attributes.name] = c.id);
-    
+    categoryData.data.forEach(c => {
+        const categoryName = c.name || c.attributes?.name;
+        categoryMap[categoryName] = c.id;
+    });
+
     const tagMap = {};
-    tagData.data.forEach(t => tagMap[t.attributes.name] = t.id);
+    tagData.data.forEach(t => {
+        const tagName = t.name || t.attributes?.name;
+        tagMap[tagName] = t.id;
+    });
 
     // 2. Read Submissions
     const submissionsDir = path.join(__dirname, 'content', 'submissions');
