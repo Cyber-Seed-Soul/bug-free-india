@@ -10,4 +10,4 @@ tags: ["DevOps", "Architecture"]
 
 This article tests if the new bot can read nested folders, map the author relation securely, and find localized inline images.
 
-![Inline Image Test](./images/example.png) 
+![Inline Image Test](./images/pexels-pixabay-276267.jpg)
