@@ -8,6 +8,6 @@ tags: ["DevOps", "Architecture"]
 
 # We Have Reached the Finish Line
 
-This article proves that the V3 Full Sync bot is successfully extracting data, mapping the relations, uploading images, and rebuilding the frontend!
+This article proves that the V3 Full Sync bot is successfully extracting data, mapping the relations, uploading images, and rebuilding the frontend! updating.
 
 ![Inline Image Test](./images/pexels-pixabay-276267.jpg)
