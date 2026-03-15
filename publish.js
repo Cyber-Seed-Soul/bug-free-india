@@ -1,7 +1,6 @@
 const fs = require('fs');
 const path = require('path');
 const matter = require('gray-matter');
-const FormData = require('form-data');
 
 const STRAPI_URL = process.env.STRAPI_URL;
 const STRAPI_TOKEN = process.env.STRAPI_WRITE_TOKEN;
