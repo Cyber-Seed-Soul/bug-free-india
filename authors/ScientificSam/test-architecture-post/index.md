@@ -1,13 +1,13 @@
 ---
-title: "The V3 Architecture is Alive"
-slug: "test-architecture-post"
+title: "The Multi-Tenant Architecture is Alive"
+slug: "how-to-protect-your-data-yourself-in-india"
 author: "ScientificSam"
-category: "Cybersecurity"
+category: "Platform Engineering"
 tags: ["DevOps", "Architecture"]
 ---
 
 # We Have Reached the Finish Line
 
-This article proves that the V3 Full Sync bot is successfully extracting data, mapping the relations, uploading images, and rebuilding the frontend! updating.
+This article proves that the multi-tenant architecture is successfully extracting data, mapping the relations, and uploading images!
 
 ![Inline Image Test](./images/pexels-pixabay-276267.jpg)
