@@ -1,121 +1,147 @@
 const fs = require('fs');
 const path = require('path');
 const matter = require('gray-matter');
+const FormData = require('form-data');
 
 const STRAPI_URL = process.env.STRAPI_URL;
 const STRAPI_TOKEN = process.env.STRAPI_WRITE_TOKEN;
+
+// --- SECURITY GUARDRAILS ---
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB Limit
+const ALLOWED_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.avif', '.svg'];
 
 async function strapiRequest(endpoint, method = 'GET', body = null) {
     const options = {
         method,
         headers: {
-            'Content-Type': 'application/json',
             'Authorization': `Bearer ${STRAPI_TOKEN}`
         }
     };
-    if (body) options.body = JSON.stringify(body);
+    if (body) {
+        options.headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify(body);
+    }
     
     const res = await fetch(`${STRAPI_URL}/api/${endpoint}`, options);
     if (!res.ok) throw new Error(`API Error ${res.status}: ${await res.text()}`);
     return res.json();
 }
 
-// Auto-Sync Function for Tags and Categories
-async function getOrCreateTerm(endpoint, termName, map) {
-    if (map[termName]) return map[termName]; // Already exists in CMS
+async function uploadImageToStrapi(localPath) {
+    if (!fs.existsSync(localPath)) throw new Error(`Image not found: ${localPath}`);
     
-    console.log(`➕ Auto-syncing new ${endpoint} to CMS: ${termName}`);
-    try {
-        // Standard Strapi schema convention uses 'Name' for tags/categories. 
-        // If your database uses 'Title' instead of 'Name', we will get a 400 error here.
-        const payload = { 
-            data: { 
-                Name: termName, 
-                publishedAt: new Date().toISOString() 
-            } 
-        };
-        const res = await strapiRequest(endpoint, 'POST', payload);
-        
-        // Handle Strapi v5 documentId vs Strapi v4 id
-        const newId = res.data.documentId || res.data.id; 
-        map[termName] = newId;
-        return newId;
-    } catch (e) {
-        console.error(`❌ Failed to create ${endpoint} '${termName}'. Error:`, e.message);
-        throw e;
+    const ext = path.extname(localPath).toLowerCase();
+    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+        throw new Error(`Security Violation: Extension ${ext} not allowed.`);
     }
+
+    const stats = fs.statSync(localPath);
+    if (stats.size > MAX_FILE_SIZE) {
+        throw new Error(`Size Violation: File exceeds 5MB limit.`);
+    }
+
+    const form = new FormData();
+    form.append('files', fs.createReadStream(localPath));
+
+    const options = {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${STRAPI_TOKEN}`,
+            ...form.getHeaders()
+        },
+        body: form
+    };
+
+    const res = await fetch(`${STRAPI_URL}/api/upload`, options);
+    if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+    const data = await res.json();
+    return `${STRAPI_URL}${data[0].url}`; 
+}
+
+async function getOrCreateTerm(endpoint, termName, map) {
+    if (map[termName]) return map[termName]; 
+    console.log(`➕ Auto-syncing new ${endpoint}: ${termName}`);
+    const payload = { data: { Name: termName, publishedAt: new Date().toISOString() } };
+    const res = await strapiRequest(endpoint, 'POST', payload);
+    const newId = res.data.documentId || res.data.id; 
+    map[termName] = newId;
+    return newId;
 }
 
 async function runPublisher() {
     console.log("🚀 Starting Auto-Publisher...");
     let hasError = false;
 
-    // 1. Fetch CMS Map
+    // 1. Map CMS Relations
     const categoryData = await strapiRequest('categories');
     const tagData = await strapiRequest('tags');
-    
     const categoryMap = {};
-    categoryData.data.forEach(c => {
-        const catName = c.name || c.Name || c.Title || c.attributes?.name || c.attributes?.Name;
-        if(catName) categoryMap[catName] = c.documentId || c.id; // Store documentId for v5 support
-    });
-    
+    categoryData.data.forEach(c => categoryMap[c.Name || c.name || c.attributes?.Name] = c.documentId || c.id);
     const tagMap = {};
-    tagData.data.forEach(t => {
-        const tagName = t.name || t.Name || t.Title || t.attributes?.name || t.attributes?.Name;
-        if(tagName) tagMap[tagName] = t.documentId || t.id;
-    });
+    tagData.data.forEach(t => tagMap[t.Name || t.name || t.attributes?.Name] = t.documentId || t.id);
 
-    // 2. Read Submissions
     const submissionsDir = path.join(__dirname, 'content', 'submissions');
     const files = fs.readdirSync(submissionsDir).filter(f => f.endsWith('.md'));
 
     for (const file of files) {
         console.log(`\n📄 Processing: ${file}`);
-        const content = fs.readFileSync(path.join(submissionsDir, file), 'utf8');
-        const parsed = matter(content);
+        const contentRaw = fs.readFileSync(path.join(submissionsDir, file), 'utf8');
+        const parsed = matter(contentRaw);
         const { title, slug, category, tags } = parsed.data;
 
         if (!title || !slug || !category) {
-            console.error(`❌ Skipped: Missing title, slug, or category in ${file}`);
+            console.error(`❌ Skipped: Missing frontmatter in ${file}`);
             hasError = true;
             continue;
         }
 
         try {
-            // 3. AUTO-SYNC: Ensure Category and Tags exist in CMS
-            const categoryId = await getOrCreateTerm('categories', category, categoryMap);
-            
-            const tagIds = [];
-            if (tags && Array.isArray(tags)) {
-                for (const t of tags) {
-                    const tId = await getOrCreateTerm('tags', t, tagMap);
-                    tagIds.push(tId);
+            // 2. INLINE IMAGE SWAPPER
+            let updatedContent = parsed.content;
+            const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g; 
+            const matches = [...updatedContent.matchAll(imageRegex)];
+
+            for (const match of matches) {
+                const imagePath = match[2];
+                if (!imagePath.startsWith('http')) {
+                    const cleanPath = imagePath.replace(/^\.\//, ''); 
+                    const absoluteLocalPath = path.join(submissionsDir, cleanPath);
+                    
+                    console.log(`   ⬆️ Uploading inline image: ${cleanPath}...`);
+                    const liveUrl = await uploadImageToStrapi(absoluteLocalPath);
+                    updatedContent = updatedContent.replace(imagePath, liveUrl);
                 }
             }
 
-            // 4. Build Payload
+            // 3. Sync Categories & Tags
+            const categoryId = await getOrCreateTerm('categories', category, categoryMap);
+            const tagIds = [];
+            if (tags) {
+                for (const t of tags) tagIds.push(await getOrCreateTerm('tags', t, tagMap));
+            }
+
+            // 4. Build Base Payload (NO publishedAt here)
             const payload = {
                 data: {
                     Title: title,
                     slug: slug,
-                    Content: parsed.content,
+                    Content: updatedContent, 
                     category: categoryId,
-                    tags: tagIds,
-                    publishedAt: new Date().toISOString()
+                    tags: tagIds
                 }
             };
 
-            // 5. Update or Create (Using SLUG as the unbreakable anchor)
+            // 5. Update or Create Logic
             const search = await strapiRequest(`articles?filters[slug][$eq]=${encodeURIComponent(slug)}`);
-            
             if (search.data && search.data.length > 0) {
-                // Strapi v5 FIX: Use documentId instead of id
                 const targetId = search.data[0].documentId || search.data[0].id; 
+                // UPDATE: No publishedAt sent to avoid the 403 error
                 console.log(`Updating existing article (ID/DocID: ${targetId})...`);
                 await strapiRequest(`articles/${targetId}`, 'PUT', payload);
                 console.log(`✅ Updated successfully!`);
             } else {
+                // CREATE: Attach publishedAt to bypass Draft state
+                payload.data.publishedAt = new Date().toISOString();
                 console.log(`Creating new article...`);
                 await strapiRequest('articles', 'POST', payload);
                 console.log(`✅ Created successfully!`);

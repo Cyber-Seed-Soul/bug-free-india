@@ -19,6 +19,7 @@
   },
   "homepage": "https://github.com/Cyber-Seed-Soul/bug-free-india#readme",
   "dependencies": {
+    "form-data": "^4.0.5",
     "gray-matter": "^4.0.3"
   }
 }
