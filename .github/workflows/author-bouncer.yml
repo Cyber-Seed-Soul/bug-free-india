@@ -1,0 +1,52 @@
+name: Author Sandbox Security
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  enforce-sandbox:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Modified Files
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const actor = context.actor;
+            console.log(`👤 PR Author: ${actor}`);
+            
+            // Allow repository owners/maintainers to bypass the bouncer if needed
+            // (You can add your exact GitHub username here to give yourself God Mode)
+            const admins = ['ScientificSam']; 
+            if (admins.includes(actor)) {
+              console.log('🛡️ Admin detected. Bypassing sandbox rules.');
+              return;
+            }
+
+            const allowedPrefix = `authors/${actor}/`;
+            console.log(`🔒 Allowed Directory: ${allowedPrefix}`);
+
+            // Fetch the list of files changed in this PR
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+
+            let violationFound = false;
+
+            files.forEach(file => {
+              console.log(`📄 Checking file: ${file.filename}`);
+              
+              // Rule: If they touch anything in the repo, it MUST be inside their specific folder
+              if (!file.filename.startsWith(allowedPrefix)) {
+                console.error(`❌ SECURITY VIOLATION: User ${actor} attempted to modify ${file.filename}`);
+                violationFound = true;
+              }
+            });
+
+            if (violationFound) {
+              core.setFailed(`🚨 PR Rejected: You are only allowed to modify files inside your dedicated folder (${allowedPrefix}).`);
+            } else {
+              console.log(`✅ Sandbox check passed. All files belong to ${actor}.`);
+            }
