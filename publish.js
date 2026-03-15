@@ -50,7 +50,9 @@ async function getOrCreateTerm(endpoint, termName, map) {
 }
 
 async function runPublisher() {
-    console.log("🚀 Starting Multi-Tenant Auto-Publisher V2...");
+    console.log("🚀 Starting Multi-Tenant Auto-Publisher V3 (Full Sync)...");
+    let hasError = false;
+    const localSlugs = []; // THE MASTER LIST
 
     // 1. Map Relations (Category & Tags)
     const categoryData = await strapiRequest('categories');
@@ -60,83 +62,121 @@ async function runPublisher() {
     const tagMap = {};
     tagData.data.forEach(t => tagMap[t.Name || t.attributes?.Name] = t.documentId || t.id);
 
-    // 2. Resolve Multi-Tenant Folder Path
-    // Bot V2 uses: authors/<github_username>/<slug>/index.md
-    const filename = process.argv[2] || 'authors/ScientificSam/how-to-protect-your-data-yourself-in-india/index.md';
-    console.log(`\n📄 Processing: ${filename}...`);
-    const filePath = path.join(__dirname, filename);
-    const articleFolder = path.dirname(filePath);
-
-    if (!fs.existsSync(filePath)) {
-        console.error("❌ File not found. Pipeline aborted.");
-        process.exit(1);
+    // 2. Traverse Authors Directory
+    const authorsDir = path.join(__dirname, 'authors');
+    if (!fs.existsSync(authorsDir)) {
+        console.log("No authors directory found. Exiting.");
+        return;
     }
 
-    const contentRaw = fs.readFileSync(filePath, 'utf8');
-    const parsed = matter(contentRaw);
-    const { title, slug, author, category, tags } = parsed.data;
+    const authors = fs.readdirSync(authorsDir);
+    
+    for (const author of authors) {
+        const authorPath = path.join(authorsDir, author);
+        if (!fs.statSync(authorPath).isDirectory()) continue;
 
+        const articles = fs.readdirSync(authorPath);
+        for (const articleFolder of articles) {
+            const articlePath = path.join(authorPath, articleFolder);
+            if (!fs.statSync(articlePath).isDirectory()) continue;
+
+            const mdPath = path.join(articlePath, 'index.md');
+            if (!fs.existsSync(mdPath)) continue;
+
+            console.log(`\n📄 Processing: ${author}/${articleFolder}/index.md`);
+            const contentRaw = fs.readFileSync(mdPath, 'utf8');
+            const parsed = matter(contentRaw);
+            const { title, slug, category, tags } = parsed.data;
+
+            if (!title || !slug || !category) {
+                console.error(`❌ Skipped: Missing essential frontmatter.`);
+                hasError = true;
+                continue;
+            }
+
+            // Register this slug as an officially sanctioned, active article
+            localSlugs.push(slug);
+
+            try {
+                // 3. Nested Inline Image Swapper
+                let updatedContent = parsed.content;
+                const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g; 
+                const matches = [...updatedContent.matchAll(imageRegex)];
+
+                for (const match of matches) {
+                    const imagePath = match[2];
+                    if (!imagePath.startsWith('http')) {
+                        const cleanPath = imagePath.replace(/^\.\//, ''); 
+                        const absoluteLocalPath = path.join(articlePath, cleanPath);
+                        
+                        console.log(`   ⬆️ Uploading inline image: ${cleanPath}...`);
+                        const liveUrl = await uploadImageToStrapi(absoluteLocalPath);
+                        updatedContent = updatedContent.replace(imagePath, liveUrl);
+                    }
+                }
+
+                // 4. Sync Categories & Tags
+                const categoryId = await getOrCreateTerm('categories', category, categoryMap);
+                const tagIds = [];
+                if (tags) {
+                    for (const t of tags) tagIds.push(await getOrCreateTerm('tags', t, tagMap));
+                }
+
+                // 5. Build Explicit CMS Payload
+                const payload = {
+                    data: {
+                        Title: title,
+                        slug: slug,
+                        Content: updatedContent, 
+                        category: categoryId,
+                        tags: tagIds
+                    }
+                };
+
+                // 6. UPSERT Logic
+                const search = await strapiRequest(`articles?filters[slug][$eq]=${encodeURIComponent(slug)}`);
+                if (search.data && search.data.length > 0) {
+                    const targetId = search.data[0].documentId || search.data[0].id; 
+                    console.log(`Updating existing article...`);
+                    await strapiRequest(`articles/${targetId}`, 'PUT', payload);
+                    console.log(`✅ Updated successfully!`);
+                } else {
+                    payload.data.publishedAt = new Date().toISOString();
+                    console.log(`Creating new article...`);
+                    await strapiRequest('articles', 'POST', payload);
+                    console.log(`✅ Created successfully!`);
+                }
+            } catch (error) {
+                console.error(`❌ Failed to process ${slug}:`, error.message);
+                hasError = true;
+            }
+        }
+    }
+
+    // ==========================================
+    // 7. GARBAGE COLLECTION (DELETION SYNC)
+    // ==========================================
+    console.log("\n🧹 Starting Garbage Collection (Deletion Sync)...");
     try {
-        // 3. Resolve Inline Images
-        let updatedContent = parsed.content;
-        const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g; 
-        const matches = [...updatedContent.matchAll(imageRegex)];
-
-        for (const match of matches) {
-            const imagePath = match[2];
-            if (!imagePath.startsWith('http')) {
-                // If path is local (./images/xyz.png), resolve it relative to the specific article folder
-                const absoluteLocalPath = path.resolve(articleFolder, imagePath);
-                console.log(`   ⬆️ Uploading inline image: ${imagePath}...`);
-                const liveUrl = await uploadImageToStrapi(absoluteLocalPath);
-                updatedContent = updatedContent.replace(imagePath, liveUrl);
-            }
-        }
-
-        // 4. Create Relation Fields on the fly
-        if (!category) throw new Error("Missing required 'category' in frontmatter.");
-        const categoryId = await getOrCreateTerm('categories', category, categoryMap);
+        const strapiArticles = await strapiRequest('articles?pagination[limit]=1000');
         
-        const tagIds = [];
-        if (tags) {
-            for (const t of tags) {
-                tagIds.push(await getOrCreateTerm('tags', t, tagMap));
+        for (const article of strapiArticles.data) {
+            const cmsSlug = article.slug || article.attributes?.slug;
+            const docId = article.documentId || article.id;
+            
+            // If Strapi has an article that GitHub doesn't know about, DELETE it.
+            if (!localSlugs.includes(cmsSlug)) {
+                console.log(`🗑️ Article '${cmsSlug}' not found in GitHub. Deleting from Strapi...`);
+                await strapiRequest(`articles/${docId}`, 'DELETE');
+                console.log(`✅ Deleted successfully!`);
             }
         }
-
-        // 5. Build Final CMS Payload
-        const payload = {
-            data: {
-                Title: title,
-                slug: slug,
-                Author: author,
-                Content: updatedContent, 
-                category: categoryId,
-                tags: tagIds
-            }
-        };
-
-        // 6. THE UPSERT (Create or Update Logic)
-        const search = await strapiRequest(`articles?filters[slug][$eq]=${slug}`);
-        
-        if (search.data && search.data.length > 0) {
-            // Case A: Article exists. We must use the DOCUMENT ID for Strapi v5 Document API.
-            const documentId = search.data[0].documentId || search.data[0].id; 
-            console.log(`Updating existing article with documentId: ${documentId}...`);
-            await strapiRequest(`articles/${documentId}`, 'PUT', payload);
-            console.log(`✅ Updated successfully!`);
-        } else {
-            // Case B: Article is new. We must explicitly set the publication time.
-            payload.data.publishedAt = new Date().toISOString();
-            console.log(`Creating new article...`);
-            await strapiRequest('articles', 'POST', payload);
-            console.log(`✅ Created successfully!`);
-        }
-
     } catch (error) {
-        console.error('❌ Failed:', error.message);
-        process.exit(1);
+        console.error("❌ Garbage Collection Failed:", error.message);
+        hasError = true;
     }
+
+    if (hasError) process.exit(1);
 }
 
 runPublisher();
