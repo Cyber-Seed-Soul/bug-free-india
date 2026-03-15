@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'content/submissions/**.md'
+      - 'authors/**.md'
 
 jobs:
   publish:
