@@ -15,8 +15,7 @@ jobs:
             const actor = context.actor;
             console.log(`👤 PR Author: ${actor}`);
             
-            // Allow repository owners/maintainers to bypass the bouncer if needed
-            // (You can add your exact GitHub username here to give yourself God Mode)
+            // Allow repository owners to bypass
             const admins = ['ScientificSam']; 
             if (admins.includes(actor)) {
               console.log('🛡️ Admin detected. Bypassing sandbox rules.');
