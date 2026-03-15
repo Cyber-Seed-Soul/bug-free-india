@@ -1,7 +1,6 @@
 const fs = require('fs');
 const path = require('path');
 const matter = require('gray-matter');
-const FormData = require('form-data');
 
 const STRAPI_URL = process.env.STRAPI_URL;
 const STRAPI_TOKEN = process.env.STRAPI_WRITE_TOKEN;
@@ -16,25 +15,39 @@ async function strapiRequest(endpoint, method = 'GET', body = null) {
         options.body = JSON.stringify(body);
     }
     const res = await fetch(`${STRAPI_URL}/api/${endpoint}`, options);
+    
     if (!res.ok) throw new Error(`API Error ${res.status}: ${await res.text()}`);
+    // Handle DELETE requests which often return 204 No Content
+    if (res.status === 204 || res.headers.get('content-length') === '0') return {}; 
     return res.json();
 }
 
 async function uploadImageToStrapi(localPath) {
-    const form = new FormData();
-    form.append('files', fs.createReadStream(localPath));
+    // FIX: Using Native Node 18+ Blob and FormData to prevent 404 clashes
+    const fileBuffer = fs.readFileSync(localPath);
+    const ext = path.extname(localPath).replace('.', '').toLowerCase();
+    
+    let mimeType = 'image/jpeg';
+    if (ext === 'png') mimeType = 'image/png';
+    if (ext === 'webp') mimeType = 'image/webp';
+    if (ext === 'gif') mimeType = 'image/gif';
+    if (ext === 'svg') mimeType = 'image/svg+xml';
+
+    const blob = new Blob([fileBuffer], { type: mimeType });
+    const form = new FormData(); 
+    form.append('files', blob, path.basename(localPath));
 
     const options = {
         method: 'POST',
         headers: {
-            'Authorization': `Bearer ${STRAPI_TOKEN}`,
-            ...form.getHeaders()
+            'Authorization': `Bearer ${STRAPI_TOKEN}`
+            // Note: Native fetch + FormData automatically sets multipart boundaries
         },
         body: form
     };
 
     const res = await fetch(`${STRAPI_URL}/api/upload`, options);
-    if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+    if (!res.ok) throw new Error(`Upload failed: ${res.status} - ${await res.text()}`);
     const data = await res.json();
     return `${STRAPI_URL}${data[0].url}`; 
 }
@@ -50,9 +63,8 @@ async function getOrCreateTerm(endpoint, termName, map) {
 }
 
 async function runPublisher() {
-    console.log("🚀 Starting Multi-Tenant Auto-Publisher V3 (Full Sync)...");
+    console.log("🚀 Starting V4 Auto-Publisher (Safe GitOps Mode)...");
     let hasError = false;
-    const localSlugs = []; // THE MASTER LIST
 
     // 1. Map Relations (Category & Tags)
     const categoryData = await strapiRequest('categories');
@@ -64,10 +76,7 @@ async function runPublisher() {
 
     // 2. Traverse Authors Directory
     const authorsDir = path.join(__dirname, 'authors');
-    if (!fs.existsSync(authorsDir)) {
-        console.log("No authors directory found. Exiting.");
-        return;
-    }
+    if (!fs.existsSync(authorsDir)) return;
 
     const authors = fs.readdirSync(authorsDir);
     
@@ -83,20 +92,46 @@ async function runPublisher() {
             const mdPath = path.join(articlePath, 'index.md');
             if (!fs.existsSync(mdPath)) continue;
 
-            console.log(`\n📄 Processing: ${author}/${articleFolder}/index.md`);
             const contentRaw = fs.readFileSync(mdPath, 'utf8');
             const parsed = matter(contentRaw);
-            const { title, slug, category, tags } = parsed.data;
+            
+            // Extract the 'delete' flag alongside standard data
+            const { title, slug, category, tags, delete: isDelete } = parsed.data;
 
-            if (!title || !slug || !category) {
-                console.error(`❌ Skipped: Missing essential frontmatter.`);
+            if (!slug) {
+                console.error(`❌ Skipped ${articleFolder}: Missing 'slug' in frontmatter.`);
                 hasError = true;
                 continue;
             }
 
-            // Register this slug as an officially sanctioned, active article
-            localSlugs.push(slug);
+            // ==========================================
+            // EXPLICIT DELETION MECHANISM
+            // ==========================================
+            if (isDelete === true) {
+                console.log(`\n🗑️ EXPLICIT DELETION REQUESTED FOR: ${slug}`);
+                try {
+                    const search = await strapiRequest(`articles?filters[slug][$eq]=${encodeURIComponent(slug)}`);
+                    if (search.data && search.data.length > 0) {
+                        const docId = search.data[0].documentId || search.data[0].id;
+                        await strapiRequest(`articles/${docId}`, 'DELETE');
+                        console.log(`✅ Successfully deleted from CMS.`);
+                    } else {
+                        console.log(`⚠️ Article not found in CMS. Already deleted.`);
+                    }
+                } catch (error) {
+                    console.error(`❌ Deletion failed:`, error.message);
+                    hasError = true;
+                }
+                // Stop processing this article (do not upload images or update text)
+                continue; 
+            }
 
+            // ==========================================
+            // NORMAL PUBLISHING MECHANISM
+            // ==========================================
+            if (!title || !category) continue;
+
+            console.log(`\n📄 Processing: ${author}/${articleFolder}/index.md`);
             try {
                 // 3. Nested Inline Image Swapper
                 let updatedContent = parsed.content;
@@ -151,29 +186,6 @@ async function runPublisher() {
                 hasError = true;
             }
         }
-    }
-
-    // ==========================================
-    // 7. GARBAGE COLLECTION (DELETION SYNC)
-    // ==========================================
-    console.log("\n🧹 Starting Garbage Collection (Deletion Sync)...");
-    try {
-        const strapiArticles = await strapiRequest('articles?pagination[limit]=1000');
-        
-        for (const article of strapiArticles.data) {
-            const cmsSlug = article.slug || article.attributes?.slug;
-            const docId = article.documentId || article.id;
-            
-            // If Strapi has an article that GitHub doesn't know about, DELETE it.
-            if (!localSlugs.includes(cmsSlug)) {
-                console.log(`🗑️ Article '${cmsSlug}' not found in GitHub. Deleting from Strapi...`);
-                await strapiRequest(`articles/${docId}`, 'DELETE');
-                console.log(`✅ Deleted successfully!`);
-            }
-        }
-    } catch (error) {
-        console.error("❌ Garbage Collection Failed:", error.message);
-        hasError = true;
     }
 
     if (hasError) process.exit(1);
