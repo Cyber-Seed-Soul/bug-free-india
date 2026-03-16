@@ -1,5 +1,5 @@
 name: 🚀 Request Article Workspace
-description: Get your personal, isolated folder to write your article.
+description: Our bot will automatically build your sharded folder, copy the template, and provide your magic link.
 title: "[Workspace]: <Your Article Title>"
 labels: ["workspace-request"]
 assignees: []
@@ -8,15 +8,33 @@ body:
   - type: markdown
     attributes:
       value: |
-        ## Welcome to the Cyber Seed Soul Platform! 
-        Fill out this form, and our automated bot will build your writing workspace in less than 10 seconds.
+        ## Welcome, Author! 
+        Fill out this form, and our automated bot will build your isolated writing workspace in less than 10 seconds.
   
+  - type: input
+    id: author_name
+    attributes:
+      label: Your Public Display Name
+      description: The name you want shown on the website (e.g., Prof. Sam).
+      placeholder: Scientific Sam
+    validations:
+      required: true
+
+  - type: input
+    id: author_email
+    attributes:
+      label: Your Public Contact Email
+      description: A public email address if you want readers to contact you (Optional).
+      placeholder: sam@cyberseedsoul.in
+    validations:
+      required: false
+
   - type: input
     id: article_slug
     attributes:
       label: Article URL Slug
-      description: Use lowercase letters and hyphens only (e.g., how-to-learn-python). This will be your article's web address.
-      placeholder: my-awesome-article
+      description: Use lowercase letters and hyphens only (e.g., protecting-indian-citizen-data).
+      placeholder: my-first-post
     validations:
       required: true
 

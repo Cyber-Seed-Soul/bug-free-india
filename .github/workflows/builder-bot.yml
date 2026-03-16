@@ -1,0 +1,125 @@
+name: "IssueOps Workspace Builder"
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  build-workspace:
+    runs-on: ubuntu-latest
+    if: contains(github.event.issue.labels.*.name, 'workspace-request')
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install gray-matter Parser
+        run: npm install gray-matter 
+
+      - name: Run Builder Script
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            
+            // 1. Get Issue Data and Actor
+            const issue = github.event.issue;
+            const actor = github.actor; // The crucial GitHub Username
+            console.log(`🚀 Starting workspace build for ${actor}...`);
+
+            // 2. Parse the Issue Form Body
+            // We need custom parsing to extract field IDs from the GitHub Issue Form YAML format
+            const body = issue.body;
+            const authorNameMatch = body.match(/### Your Public Display Name\s+([\s\S]+?)\s+###/);
+            const authorEmailMatch = body.match(/### Your Public Contact Email\s+([\s\S]+?)\s+###/);
+            const articleSlugMatch = body.match(/### Article URL Slug\s+([\s\S]+?)\s+###/);
+            const categoryMatch = body.match(/### Primary Category\s+([\s\S]+?)\s*$/);
+
+            if (!authorNameMatch || !articleSlugMatch || !categoryMatch) {
+              console.log("⚠️ Failed to parse form. Ensure required fields are filled.");
+              return;
+            }
+
+            const authorName = authorNameMatch[1].trim();
+            const authorEmail = authorEmailMatch ? authorEmailMatch[1].trim() : '';
+            const rawSlug = articleSlugMatch[1].trim();
+            const category = categoryMatch[1].trim();
+
+            // Validate Slug Syntax (lowercase letters and hyphens only)
+            const slugRegex = /^[a-z0-9-]+$/;
+            if (!slugRegex.test(rawSlug)) {
+              console.log(`⚠️ Invalid slug format: ${rawSlug}`);
+              await github.rest.issues.createComment({
+                ...github.repo,
+                issue_number: issue.number,
+                body: `⚠️ **Invalid Slug:** '${rawSlug}'. Please use only lowercase letters and hyphens (e.g., how-to-code).`
+              });
+              return;
+            }
+            const slug = rawSlug;
+
+            // 3. Shard Directory and unique path calculation
+            const shard = actor.substring(0, 1).toLowerCase();
+            const uniquePath = `authors/${shard}/${actor}/${slug}/index.md`;
+            console.log(`📄 Target file path: ${uniquePath}`);
+
+            // Ensure directory exists synchronously
+            const targetDir = path.dirname(uniquePath);
+            fs.mkdirSync(targetDir, { recursive: true });
+
+            // 4. Create the final Markdown content with injected, validated frontmatter
+            const dateStr = new Date().toISOString().split('T')[0];
+            const content = `---
+            title: "${articleName}"
+            slug: "${slug}"
+            author_name: "${authorName}"
+            author_email: "${authorEmail}"
+            github_username: "${actor}"  # NATIVE IDENTITY BINDING (For Validation Bot)
+            category: "${category}"
+            tags: ["Open Source", "Cyber Seed Soul"]
+            date: "${dateStr}"
+            ---
+            
+            # ${articleName}
+            
+            Write your content here. Add an image like this: ![desc](./images/your-image.jpg)
+            `;
+
+            fs.writeFileSync(uniquePath, content);
+            console.log("✅ index.md created successfully.");
+
+            // 5. Commit and Push back to main
+            const exec = require('child_process').execSync;
+            exec('git config user.name "Cyber Seed Soul Bot"');
+            exec('git config user.email "bot@cyberseedsoul.in"');
+            exec(`git add ${uniquePath}`);
+            exec(`git commit -m "feat: auto-created workspace for ${actor}: ${slug}"`);
+            exec('git push origin main');
+
+            console.log(`✅ File committed and pushed.`);
+
+            // 6. Magic Link Generation (Points directly to Browser-Code editor on the file)
+            const magicLink = `https://github.dev/${github.repository}/blob/main/${uniquePath}`;
+            
+            await github.rest.issues.createComment({
+              ...github.repo,
+              issue_number: issue.number,
+              body: `✅ **Workspace Ready!**\\n\\nClick this magic link to write your article in your browser. Images can be dragged into your folder tree:\\n\\n🔗 [Start Writing: ${articleName}](${magicLink})`
+            });
+
+            await github.rest.issues.update({
+              ...github.repo,
+              issue_number: issue.number,
+              state: 'closed'
+            });
