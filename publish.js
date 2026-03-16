@@ -2,8 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const matter = require('gray-matter');
 const FormData = require('form-data');
+const crypto = require('crypto'); // NEW: For intelligent content hashing
 
-// NEGATIVE SPACE FIX: Strip any accidental trailing slashes from the GitHub Secret
 const STRAPI_URL = (process.env.STRAPI_URL || '').replace(/\/$/, '');
 const STRAPI_TOKEN = process.env.STRAPI_WRITE_TOKEN;
 
@@ -27,30 +27,39 @@ async function strapiRequest(endpoint, method = 'GET', body = null) {
 async function handleImage(localPath, authorName, articleSlug) {
     console.log(`   -> [IMAGE] Processing: ${localPath}`);
     
-    // EDGE CASE: Author provided a bad path or file doesn't exist
     if (!fs.existsSync(localPath)) {
         console.log(`   -> ⚠️ [WARNING] Image missing on disk. Skipping upload but keeping text.`);
         return null; 
     }
 
-    // EDGE CASE: Prevent name collisions by tagging files with the author and slug
-    const rawFileName = path.basename(localPath);
-    const uniqueFileName = `${authorName}_${articleSlug}_${rawFileName}`;
+    const ext = path.extname(localPath).toLowerCase();
+    const fileBuffer = fs.readFileSync(localPath);
 
-    // 1. "SKIP IF EXISTS" LOGIC
-    console.log(`   -> [IMAGE] Checking CMS cache for: ${uniqueFileName}...`);
-    // Note: Strapi upload/files endpoint returns an array directly
-    const searchRes = await strapiRequest(`upload/files?filters[name][$eq]=${encodeURIComponent(uniqueFileName)}`);
-    
-    if (Array.isArray(searchRes) && searchRes.length > 0) {
-        console.log(`   -> [IMAGE] ✅ Found in CMS! Skipping upload.`);
-        return `${STRAPI_URL}${searchRes[0].url}`;
+    // REAL-WORLD FIX: Create an MD5 fingerprint of the actual image content.
+    const hashSum = crypto.createHash('md5');
+    hashSum.update(fileBuffer);
+    const fileHash = hashSum.digest('hex').substring(0, 10); // Use first 10 chars of hash
+
+    const uniqueFileName = `${authorName}_${articleSlug}_${fileHash}${ext}`;
+
+    // 1. SMART CACHE CHECK (Relies on Strapi API Token 'upload.find' permission)
+    console.log(`   -> [IMAGE] Checking CMS cache for fingerprint: ${uniqueFileName}...`);
+    try {
+        const searchRes = await strapiRequest(`upload/files?filters[name][$eq]=${encodeURIComponent(uniqueFileName)}`);
+        if (Array.isArray(searchRes) && searchRes.length > 0) {
+            console.log(`   -> [IMAGE] ✅ Unchanged image found in CMS cache! Skipping upload.`);
+            return `${STRAPI_URL}${searchRes[0].url}`;
+        }
+    } catch (cacheError) {
+        console.error(`   -> ❌ [FATAL] CMS denied cache read. Did you enable 'upload -> find' in the Strapi API Token settings?`);
+        throw cacheError; // We now intentionally fail if permissions are wrong to enforce clean architecture
     }
 
-    // 2. UPLOAD LOGIC (Using Bulletproof Buffer Bridge)
-    console.log(`   -> [IMAGE] Not found in cache. Initiating secure upload...`);
+    // 2. SECURE UPLOAD LOGIC
+    console.log(`   -> [IMAGE] New or modified image detected. Initiating secure upload...`);
     const form = new FormData();
-    form.append('files', fs.createReadStream(localPath), { filename: uniqueFileName });
+    // Pass the buffer directly and enforce our fingerprinted file name
+    form.append('files', fileBuffer, { filename: uniqueFileName });
 
     const payloadBuffer = await new Promise((resolve, reject) => {
         const chunks = [];
@@ -89,7 +98,7 @@ async function getOrCreateTerm(endpoint, termName, map) {
 }
 
 async function runPublisher() {
-    console.log("🚀 STARTING V6 FOOLPROOF PUBLISHER ENGINE\n");
+    console.log("🚀 STARTING V7 'SMART SYNC' PUBLISHER ENGINE\n");
     let hasError = false;
 
     try {
@@ -117,7 +126,6 @@ async function runPublisher() {
                 const mdPath = path.join(articlePath, 'index.md');
                 if (!fs.existsSync(mdPath)) continue;
 
-                // EDGE CASE: Isolate each article in a try/catch so one bad file doesn't stop the others
                 try {
                     console.log(`\n==================================================`);
                     console.log(`📄 PROCESSING: ${author}/${articleFolder}`);
@@ -125,7 +133,6 @@ async function runPublisher() {
                     const contentRaw = fs.readFileSync(mdPath, 'utf8');
                     const parsed = matter(contentRaw);
                     
-                    // EDGE CASE: Handle missing or sloppy frontmatter
                     const slug = parsed.data.slug || articleFolder.toLowerCase().replace(/[^a-z0-9]+/g, '-');
                     const title = parsed.data.title || "Untitled Article";
                     const category = parsed.data.category || "General";
