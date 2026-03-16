@@ -30,10 +30,6 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            console.log("=========================================");
-            console.log("🚀 STARTING BUILDER BOT PIPELINE");
-            console.log("=========================================");
-
             const fs = require('fs');
             const path = require('path');
             
@@ -41,43 +37,42 @@ jobs:
                (await github.rest.issues.get({ owner: context.repo.owner, repo: context.repo.repo, issue_number: parseInt(context.payload.inputs.issue_number) })).data : 
                context.payload.issue;
 
-            if (!issue) return console.log("❌ ERROR: No issue payload found.");
+            if (!issue) return;
 
             const body = issue.body || "";
 
-            // 1. THE BULLETPROOF TRIGGER
-            // We only check if the body contains the form questions. We ignore the title completely!
             if (!body.includes('### Your Public Display Name')) {
-              console.log("❌ ABORT: Not a workspace request form. Going back to sleep.");
-              return;
+              return; // Not a workspace request
             }
 
-            console.log(`-> Processing Workspace Request #${issue.number} by ${issue.user.login}`);
-
-            // 2. Extraction Logic
-            const extract = (label) => {
-              const regex = new RegExp(`### ${label}\\s*([\\s\\S]*?)(?=\\n### |$)`);
-              const match = body.match(regex);
-              let val = match ? match[1].trim() : null;
-              if (val === "_No response_") val = ""; 
-              return val;
+            // 1. BULLETPROOF EXTRACTION LOGIC
+            // Splits the markdown cleanly and ignores "(Optional)" and "_No response_"
+            const parts = body.split('### ').map(p => p.trim()).filter(p => p);
+            
+            const getVal = (labelStart) => {
+               const part = parts.find(p => p.startsWith(labelStart));
+               if (!part) return "";
+               // Remove the question label from the text
+               let val = part.replace(labelStart, '').trim();
+               // Clean up GitHub's artifacts
+               if (val.startsWith('(Optional)')) val = val.replace('(Optional)', '').trim();
+               if (val === '_No response_') return "";
+               return val;
             };
 
-            const authorName = extract("Your Public Display Name");
-            const authorEmail = extract("Your Public Contact Email");
-            const slug = extract("Article URL Slug");
-            const rawCategory = extract("Primary Category");
-            const rawTags = extract("Tags \\(Comma Separated\\)");
+            const authorName = getVal("Your Public Display Name");
+            const authorEmail = getVal("Your Public Contact Email");
+            const slug = getVal("Article URL Slug");
+            const rawCategory = getVal("Primary Category");
+            const rawTags = getVal("Tags (Comma Separated)");
 
-            // 3. Collect ALL Errors for Feedback
+            // 2. VALIDATION
             let errors = [];
-
             if (!authorName) errors.push("Missing **Public Display Name**.");
             if (!slug) errors.push("Missing **Article URL Slug**.");
             if (!rawCategory) errors.push("Missing **Primary Category**.");
             if (!rawTags) errors.push("Missing **Tags**.");
 
-            // Validate Category
             if (rawCategory) {
               try {
                  const catJson = JSON.parse(fs.readFileSync('categories.json', 'utf8'));
@@ -85,10 +80,9 @@ jobs:
                  if (validCats.length > 0 && !validCats.includes(rawCategory)) {
                    errors.push(`Invalid Category: \`${rawCategory}\`. Options: ${validCats.join(', ')}`);
                  }
-              } catch (e) { console.log("Warning: categories.json missing"); }
+              } catch (e) {}
             }
 
-            // Validate Tags
             let inputTags = [];
             if (rawTags) {
               inputTags = rawTags.split(',').map(t => t.trim()).filter(t => t);
@@ -101,38 +95,33 @@ jobs:
                      errors.push(`Invalid Tags: \`${invalidTags.join(', ')}\`. Valid tags: ${validTagsList.join(', ')}`);
                    }
                  }
-              } catch (e) { console.log("Warning: tags.json missing"); }
+              } catch (e) {}
             }
 
-            // 🛑 HALT, FEEDBACK, AND AUTO-CLOSE IF VALIDATION FAILS
+            // 🛑 HALT IF ERRORS
             if (errors.length > 0) {
-                 console.log("❌ Validation failed. Leaving feedback and closing issue.");
-                 
                  await github.rest.issues.createComment({
                    ...context.repo,
                    issue_number: issue.number,
                    body: `⚠️ **Workspace Request Denied**\n\nHi @${issue.user.login}, we couldn't create your workspace because of the following errors:\n\n- ${errors.join('\n- ')}\n\n**Next Steps:** This request has been automatically closed to keep the queue clean. Please open a new request with the corrected information.`
                  });
-
-                 await github.rest.issues.update({
-                   ...context.repo,
-                   issue_number: issue.number,
-                   state: 'closed',
-                   state_reason: 'not_planned'
-                 });
+                 await github.rest.issues.update({ ...context.repo, issue_number: issue.number, state: 'closed', state_reason: 'not_planned' });
                  return; 
             }
 
-            console.log("✅ All validations passed! Building workspace...");
-            
-            // 4. File Construction
+            // 3. FILE CONSTRUCTION
             const actor = issue.user.login;
             const shard = actor.substring(0, 1).toLowerCase();
             const branchName = `workspace/${actor}/${slug}`;
             const uniquePath = `authors/${shard}/${actor}/${slug}/index.md`;
+            const imageFolderPath = `authors/${shard}/${actor}/${slug}/images`; // THE IMAGE FOLDER
             
-            const targetDir = path.dirname(uniquePath);
-            fs.mkdirSync(targetDir, { recursive: true });
+            // Create directories
+            fs.mkdirSync(path.dirname(uniquePath), { recursive: true });
+            fs.mkdirSync(imageFolderPath, { recursive: true });
+
+            // Create .gitkeep to force the images folder to exist
+            fs.writeFileSync(path.join(imageFolderPath, '.gitkeep'), '');
 
             const dateStr = new Date().toISOString().split('T')[0];
             const tagsFormatted = inputTags.map(t => `"${t}"`).join(', ');
@@ -147,26 +136,28 @@ jobs:
             category: "${rawCategory}"
             tags: [${tagsFormatted}]
             date: "${dateStr}"
-            ---\n\n# ${cleanTitle}\n\nWrite your content here. Add an image by dragging it into your file tree on the left and linking it like this: ![desc](./images/your-image.jpg)\n`;
+            ---\n\n# ${cleanTitle}\n\nWrite your content here. Add an image by dragging it into your \`images\` folder on the left, and link it like this: \n\n![Image description](./images/your-image.jpg)\n`;
 
+            // Write the index.md file
             fs.writeFileSync(uniquePath, content.replace(/^\s+/gm, ''));
             
-            // 5. Git Operations
+            // 4. GIT OPERATIONS
             const runCmd = require('child_process').execSync;
             runCmd('git config user.name "Cyber Seed Soul Bot"');
             runCmd('git config user.email "bot@cyberseedsoul.in"');
             runCmd(`git checkout -b ${branchName}`);
             runCmd(`git add ${uniquePath}`);
+            runCmd(`git add ${imageFolderPath}/.gitkeep`); // ADD THE IMAGES FOLDER TO GIT
             runCmd(`git commit -m "feat: auto-created workspace for ${actor}: ${slug}"`);
             runCmd(`git push origin ${branchName}`);
 
-            // 6. Magic Link & Auto-Close Success
+            // 5. MAGIC LINK & AUTHOR INSTRUCTIONS
             const magicLink = `https://github.dev/${context.repo.owner}/${context.repo.repo}/blob/${branchName}/${uniquePath}`;
             
             await github.rest.issues.createComment({
               ...context.repo,
               issue_number: issue.number,
-              body: `✅ **Workspace Ready!**\n\nHi @${actor}, your workspace is built. Click this magic link to write your article directly in your browser. You can drag and drop images into the file tree.\n\n🔗 [Start Writing Here](${magicLink})\n\n*(Note: When you are finished, commit your changes in the browser to automatically open a Pull Request!)*`
+              body: `✅ **Workspace Ready!**\n\nHi @${actor}, your workspace is built. Click this magic link to write your article directly in your browser. You will see an \`images\` folder ready for your pictures.\n\n🔗 [**Click Here to Start Writing**](${magicLink})\n\n---\n### 📝 How to submit when you are finished:\n1. Click the **Source Control** icon on the far left menu (it looks like a branching tree ᛘ).\n2. Type a message like "Finished draft" in the box and click the blue **Commit & Push** button.\n3. A notification will pop up at the bottom right. Click **Create Pull Request** to send it to us for review!`
             });
 
             await github.rest.issues.update({ ...context.repo, issue_number: issue.number, state: 'closed' });
