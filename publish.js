@@ -1,14 +1,14 @@
 const fs = require('fs');
 const path = require('path');
 const matter = require('gray-matter');
+const FormData = require('form-data');
 
-// NOTICE: We completely removed "require('form-data')". We are using pure Native Web APIs now.
-
-const STRAPI_URL = process.env.STRAPI_URL;
+// NEGATIVE SPACE FIX: Strip any accidental trailing slashes from the GitHub Secret
+const STRAPI_URL = (process.env.STRAPI_URL || '').replace(/\/$/, '');
 const STRAPI_TOKEN = process.env.STRAPI_WRITE_TOKEN;
 
 async function strapiRequest(endpoint, method = 'GET', body = null) {
-    console.log(`   -> [API CALL] ${method} /api/${endpoint}`);
+    console.log(`   -> [API] ${method} /api/${endpoint}`);
     const options = {
         method,
         headers: { 'Authorization': `Bearer ${STRAPI_TOKEN}` }
@@ -19,55 +19,68 @@ async function strapiRequest(endpoint, method = 'GET', body = null) {
     }
     const res = await fetch(`${STRAPI_URL}/api/${endpoint}`, options);
     
-    if (!res.ok) throw new Error(`[API Error] ${res.status}: ${await res.text()}`);
+    if (!res.ok) throw new Error(`API Error ${res.status}: ${await res.text()}`);
     if (res.status === 204 || res.headers.get('content-length') === '0') return {}; 
     return res.json();
 }
 
-async function uploadImageToStrapi(localPath) {
-    console.log(`   -> [IMAGE] Starting upload sequence for: ${localPath}`);
-    if (!fs.existsSync(localPath)) throw new Error(`Image not found on disk: ${localPath}`);
-
-    // 1. Read file synchronously into memory
-    const fileBuffer = fs.readFileSync(localPath);
-    console.log(`   -> [IMAGE] File read successfully. Size: ${fileBuffer.length} bytes`);
+async function handleImage(localPath, authorName, articleSlug) {
+    console.log(`   -> [IMAGE] Processing: ${localPath}`);
     
-    // 2. Determine exact mime type
-    const ext = path.extname(localPath).replace('.', '').toLowerCase();
-    let mimeType = 'image/jpeg';
-    if (ext === 'png') mimeType = 'image/png';
-    if (ext === 'webp') mimeType = 'image/webp';
-    if (ext === 'gif') mimeType = 'image/gif';
-    if (ext === 'svg') mimeType = 'image/svg+xml';
+    // EDGE CASE: Author provided a bad path or file doesn't exist
+    if (!fs.existsSync(localPath)) {
+        console.log(`   -> ⚠️ [WARNING] Image missing on disk. Skipping upload but keeping text.`);
+        return null; 
+    }
 
-    // 3. Create NATIVE Web Blob and FormData
-    console.log(`   -> [IMAGE] Packaging as Native Blob (${mimeType})...`);
-    const blob = new Blob([fileBuffer], { type: mimeType });
-    const form = new FormData(); 
-    form.append('files', blob, path.basename(localPath));
+    // EDGE CASE: Prevent name collisions by tagging files with the author and slug
+    const rawFileName = path.basename(localPath);
+    const uniqueFileName = `${authorName}_${articleSlug}_${rawFileName}`;
 
-    // 4. Send the payload
-    console.log(`   -> [IMAGE] Sending POST request to Strapi /api/upload...`);
+    // 1. "SKIP IF EXISTS" LOGIC
+    console.log(`   -> [IMAGE] Checking CMS cache for: ${uniqueFileName}...`);
+    // Note: Strapi upload/files endpoint returns an array directly
+    const searchRes = await strapiRequest(`upload/files?filters[name][$eq]=${encodeURIComponent(uniqueFileName)}`);
+    
+    if (Array.isArray(searchRes) && searchRes.length > 0) {
+        console.log(`   -> [IMAGE] ✅ Found in CMS! Skipping upload.`);
+        return `${STRAPI_URL}${searchRes[0].url}`;
+    }
+
+    // 2. UPLOAD LOGIC (Using Bulletproof Buffer Bridge)
+    console.log(`   -> [IMAGE] Not found in cache. Initiating secure upload...`);
+    const form = new FormData();
+    form.append('files', fs.createReadStream(localPath), { filename: uniqueFileName });
+
+    const payloadBuffer = await new Promise((resolve, reject) => {
+        const chunks = [];
+        form.on('data', chunk => chunks.push(chunk));
+        form.on('end', () => resolve(Buffer.concat(chunks)));
+        form.on('error', reject);
+    });
+
     const options = {
         method: 'POST',
         headers: {
-            'Authorization': `Bearer ${STRAPI_TOKEN}`
-            // DO NOT set Content-Type manually here. Native fetch calculates the multipart boundary automatically!
+            'Authorization': `Bearer ${STRAPI_TOKEN}`,
+            ...form.getHeaders()
         },
-        body: form
+        body: payloadBuffer
     };
 
     const res = await fetch(`${STRAPI_URL}/api/upload`, options);
     if (!res.ok) throw new Error(`Upload failed: ${res.status} - ${await res.text()}`);
     
     const data = await res.json();
-    console.log(`   -> [IMAGE] ✅ Upload Success! Live URL generated: ${data[0].url}`);
+    console.log(`   -> [IMAGE] ✅ Uploaded successfully!`);
     return `${STRAPI_URL}${data[0].url}`; 
 }
 
 async function getOrCreateTerm(endpoint, termName, map) {
+    if (!termName) return null;
     if (map[termName]) return map[termName]; 
-    console.log(`   -> [MAPPING] Auto-syncing new ${endpoint}: ${termName}...`);
+    
+    console.log(`   -> [TAXONOMY] Creating new ${endpoint}: ${termName}...`);
     const payload = { data: { Name: termName, publishedAt: new Date().toISOString() } };
     const res = await strapiRequest(endpoint, 'POST', payload);
     const newId = res.data.documentId || res.data.id; 
@@ -76,26 +89,20 @@ async function getOrCreateTerm(endpoint, termName, map) {
 }
 
 async function runPublisher() {
-    console.log("🚀 ================================================");
-    console.log("🚀 STARTING V5 AUTO-PUBLISHER (Maximum Visibility)");
-    console.log("🚀 ================================================\n");
+    console.log("🚀 STARTING V6 FOOLPROOF PUBLISHER ENGINE\n");
     let hasError = false;
 
     try {
-        console.log("🛠️ Step 1: Fetching existing Categories and Tags...");
+        console.log("🛠️ Mapping existing Taxonomies...");
         const categoryData = await strapiRequest('categories');
         const tagData = await strapiRequest('tags');
         const categoryMap = {};
         categoryData.data.forEach(c => categoryMap[c.Name || c.attributes?.Name] = c.documentId || c.id);
         const tagMap = {};
         tagData.data.forEach(t => tagMap[t.Name || t.attributes?.Name] = t.documentId || t.id);
-        console.log("✅ Step 1 Complete: Taxonomy maps built.\n");
 
         const authorsDir = path.join(__dirname, 'authors');
-        if (!fs.existsSync(authorsDir)) {
-            console.log("❌ No authors directory found. Aborting.");
-            return;
-        }
+        if (!fs.existsSync(authorsDir)) return;
 
         const authors = fs.readdirSync(authorsDir);
         for (const author of authors) {
@@ -110,97 +117,103 @@ async function runPublisher() {
                 const mdPath = path.join(articlePath, 'index.md');
                 if (!fs.existsSync(mdPath)) continue;
 
-                console.log(`\n==================================================`);
-                console.log(`📄 PROCESSING FILE: ${author}/${articleFolder}/index.md`);
-                console.log(`==================================================`);
+                // EDGE CASE: Isolate each article in a try/catch so one bad file doesn't stop the others
+                try {
+                    console.log(`\n==================================================`);
+                    console.log(`📄 PROCESSING: ${author}/${articleFolder}`);
+                    
+                    const contentRaw = fs.readFileSync(mdPath, 'utf8');
+                    const parsed = matter(contentRaw);
+                    
+                    // EDGE CASE: Handle missing or sloppy frontmatter
+                    const slug = parsed.data.slug || articleFolder.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+                    const title = parsed.data.title || "Untitled Article";
+                    const category = parsed.data.category || "General";
+                    const tags = parsed.data.tags || [];
+                    const isDelete = parsed.data.delete === true;
 
-                const contentRaw = fs.readFileSync(mdPath, 'utf8');
-                const parsed = matter(contentRaw);
-                const { title, slug, category, tags, delete: isDelete } = parsed.data;
-
-                if (!slug) {
-                    console.log("⚠️ No slug found in frontmatter. Skipping.");
-                    continue;
-                }
-
-                if (isDelete === true) {
-                    console.log(`🗑️ EXPLICIT DELETION FLAG DETECTED FOR: ${slug}`);
-                    const search = await strapiRequest(`articles?filters[slug][$eq]=${encodeURIComponent(slug)}`);
-                    if (search.data && search.data.length > 0) {
-                        const docId = search.data[0].documentId || search.data[0].id;
-                        await strapiRequest(`articles/${docId}`, 'DELETE');
-                        console.log(`✅ Successfully deleted from CMS.`);
+                    // DELETE API CALL
+                    if (isDelete) {
+                        console.log(`   -> 🗑️ EXPLICIT DELETION FLAG DETECTED.`);
+                        const search = await strapiRequest(`articles?filters[slug][$eq]=${encodeURIComponent(slug)}`);
+                        if (search.data && search.data.length > 0) {
+                            const docId = search.data[0].documentId || search.data[0].id;
+                            await strapiRequest(`articles/${docId}`, 'DELETE');
+                            console.log(`   -> ✅ Deleted from CMS.`);
+                        } else {
+                            console.log(`   -> ⚠️ Article not found in CMS. Already deleted.`);
+                        }
+                        continue; 
                     }
-                    continue; 
-                }
 
-                if (!title || !category) {
-                    console.log("⚠️ Missing title or category. Skipping.");
-                    continue;
-                }
+                    // IMAGE SWAPPER
+                    let updatedContent = parsed.content;
+                    const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g; 
+                    const matches = [...updatedContent.matchAll(imageRegex)];
 
-                let updatedContent = parsed.content;
-                const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g; 
-                const matches = [...updatedContent.matchAll(imageRegex)];
-
-                if (matches.length > 0) {
-                    console.log(`\n🖼️ Step 2: Extracting and Processing ${matches.length} Inline Images...`);
-                    for (const match of matches) {
-                        const imagePath = match[2];
-                        if (!imagePath.startsWith('http')) {
-                            const cleanPath = imagePath.replace(/^\.\//, ''); 
-                            const absoluteLocalPath = path.join(articlePath, cleanPath);
-                            const liveUrl = await uploadImageToStrapi(absoluteLocalPath);
-                            updatedContent = updatedContent.replace(imagePath, liveUrl);
+                    if (matches.length > 0) {
+                        for (const match of matches) {
+                            const imagePath = match[2];
+                            if (!imagePath.startsWith('http')) {
+                                const cleanPath = imagePath.replace(/^\.\//, ''); 
+                                const absoluteLocalPath = path.join(articlePath, cleanPath);
+                                
+                                const liveUrl = await handleImage(absoluteLocalPath, author, slug);
+                                if (liveUrl) {
+                                    updatedContent = updatedContent.replace(imagePath, liveUrl);
+                                }
+                            }
                         }
                     }
-                }
 
-                console.log(`\n🔗 Step 3: Mapping Relations...`);
-                const categoryId = await getOrCreateTerm('categories', category, categoryMap);
-                const tagIds = [];
-                if (tags) {
-                    for (const t of tags) tagIds.push(await getOrCreateTerm('tags', t, tagMap));
-                }
-
-                console.log(`\n📦 Step 4: Building Final CMS Payload...`);
-                const payload = {
-                    data: {
-                        Title: title,
-                        slug: slug,
-                        Content: updatedContent, 
-                        category: categoryId,
-                        tags: tagIds
+                    // RELATION MAPPING
+                    const categoryId = await getOrCreateTerm('categories', category, categoryMap);
+                    const tagIds = [];
+                    for (const t of tags) {
+                        tagIds.push(await getOrCreateTerm('tags', t, tagMap));
                     }
-                };
-                
-                console.log(`\n📤 Step 5: Executing Upsert (Database Save)...`);
-                const search = await strapiRequest(`articles?filters[slug][$eq]=${encodeURIComponent(slug)}`);
-                if (search.data && search.data.length > 0) {
-                    const targetId = search.data[0].documentId || search.data[0].id; 
-                    console.log(`   -> Article exists. Executing PUT to update documentId: ${targetId}`);
-                    await strapiRequest(`articles/${targetId}`, 'PUT', payload);
-                    console.log(`✅ SUCCESS: Article Updated!`);
-                } else {
-                    console.log(`   -> Article is new. Executing POST to create.`);
-                    payload.data.publishedAt = new Date().toISOString();
-                    await strapiRequest('articles', 'POST', payload);
-                    console.log(`✅ SUCCESS: Article Created!`);
+
+                    // BUILD PAYLOAD
+                    const payload = {
+                        data: {
+                            Title: title,
+                            slug: slug,
+                            Content: updatedContent, 
+                            category: categoryId,
+                            tags: tagIds
+                        }
+                    };
+                    
+                    // CREATE / UPDATE API CALL
+                    const search = await strapiRequest(`articles?filters[slug][$eq]=${encodeURIComponent(slug)}`);
+                    if (search.data && search.data.length > 0) {
+                        const targetId = search.data[0].documentId || search.data[0].id; 
+                        console.log(`   -> Executing PUT to update existing article...`);
+                        await strapiRequest(`articles/${targetId}`, 'PUT', payload);
+                        console.log(`✅ SUCCESS: Article Updated!`);
+                    } else {
+                        console.log(`   -> Executing POST to create new article...`);
+                        payload.data.publishedAt = new Date().toISOString();
+                        await strapiRequest('articles', 'POST', payload);
+                        console.log(`✅ SUCCESS: Article Created!`);
+                    }
+
+                } catch (articleError) {
+                    console.error(`❌ FAILED on ${articleFolder}:`, articleError.message);
+                    hasError = true;
                 }
             }
         }
     } catch (globalError) {
-        console.error(`\n🚨 FATAL PIPELINE CRASH:`, globalError.message);
+        console.error(`🚨 CRITICAL FAILURE:`, globalError.message);
         hasError = true;
     }
 
-    console.log("\n🏁 ================================================");
-    console.log("🏁 PUBLISHER RUN COMPLETE.");
     if (hasError) {
-        console.log("❌ Finished with errors.");
+        console.log("\n❌ Publisher finished with non-fatal errors.");
         process.exit(1);
     } else {
-        console.log("✅ Finished cleanly.");
+        console.log("\n✅ Publisher finished flawlessly.");
         process.exit(0);
     }
 }
