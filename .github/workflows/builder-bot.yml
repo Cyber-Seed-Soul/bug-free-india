@@ -131,13 +131,14 @@ jobs:
             const content = `---
             title: "${cleanTitle}"
             slug: "${slug}"
-            author_name: "${authorName}"
+            author: "${authorName}"
             author_email: "${authorEmail}"
             github_username: "${actor}"
             issue_number: ${issue.number}
             category: "${rawCategory}"
             tags: [${tagsFormatted}]
-            date: "${dateStr}"
+            pubDatetime: "${dateStr}"
+            description: "An insightful article written by ${authorName}."
             ---\n\n# ${cleanTitle}\n\nWrite your content here. Add an image by dragging it into your \`images\` folder on the left, and link it like this: \n\n![Image description](./images/your-image.jpg)\n`;
 
             // Write the index.md file
