@@ -111,7 +111,7 @@ jobs:
             await github.rest.issues.createComment({
               ...context.repo,
               issue_number: issue.number,
-              body: `✅ **Workspace Ready!**\n\nHi @${actor}, your writing environment is prepared. \n\n🔗 [**Click Here to Start Writing**](${magicLink})\n\n---\n### 📝 Instructions:\n1. Click the link above. \n2. Click the green **Fork this repository** button. \n3. Write your article! You can drag and drop images directly into the text box.\n4. **Important:** Change \`draft: true\` to \`draft: false\` at the top of the file.\n5. When finished, click the green **Commit changes...** button at the top right.\n6. Click **Create Pull Request** to send it to us for review!`
+              body: `✅ **Workspace Ready!**\n\nHi @${actor}, your writing environment is prepared. \n\n🔗 [**Click Here to Start Writing**](${magicLink})\n\n---\n### 📝 Instructions:\n1. Click the link above. \n2. Click the green **Fork this repository** button (if asked).\n3. Write your article! You can drag and drop images directly into the text box.\n4. When finished, click the green **Commit changes...** button at the top right.\n5. Click **Create Pull Request** to send it to us for review!`
             });
 
             try { await github.rest.issues.addLabels({ ...context.repo, issue_number: issue.number, labels: ['in-progress'] }); } catch (e) {}
