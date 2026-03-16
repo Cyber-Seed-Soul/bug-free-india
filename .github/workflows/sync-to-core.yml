@@ -1,0 +1,83 @@
+name: Sync Articles & Close Loop
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'authors/**'
+
+jobs:
+  bridge-and-close:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Database Repo
+        uses: actions/checkout@v4
+        with:
+          path: 'database-repo'
+          fetch-depth: 2 # Needed to check which files changed
+
+      - name: Checkout Frontend Astro Repo
+        uses: actions/checkout@v4
+        with:
+          repository: 'Cyber-Seed-Soul/cyberseedsoul-core'
+          token: ${{ secrets.CORE_SYNC_TOKEN }}
+          path: 'frontend-repo'
+
+      - name: Sync Markdown to Astro
+        run: |
+          mkdir -p frontend-repo/src/data/blog/authors
+          rsync -av --exclude='_templates' database-repo/authors/ frontend-repo/src/data/blog/authors/
+          cd frontend-repo
+          git config user.name "Cyber Seed Soul Bot"
+          git config user.email "bot@cyberseedsoul.in"
+          git add .
+          git commit -m "feat: auto-sync published articles from database" || echo "No changes to commit"
+          git push
+
+      - name: Provide Author Feedback & Close Issue
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const execSync = require('child_process').execSync;
+            
+            console.log("Searching for modified Markdown files to close the loop...");
+            
+            // Get files changed in this specific merge commit
+            let changedFiles = [];
+            try {
+              changedFiles = execSync('cd database-repo && git diff HEAD^ HEAD --name-only').toString().split('\n').filter(f => f.endsWith('index.md'));
+            } catch (e) {
+              console.log("Could not determine diff. Skipping auto-close.");
+              return;
+            }
+
+            for (const file of changedFiles) {
+              const fullPath = `database-repo/${file}`;
+              if (!fs.existsSync(fullPath)) continue;
+              
+              const content = fs.readFileSync(fullPath, 'utf8');
+              const issueMatch = content.match(/issue_number:\s*(\d+)/);
+              const draftMatch = content.match(/draft:\s*(true|false)/);
+              
+              // Only close the issue if they actually set draft to false!
+              if (issueMatch && draftMatch && draftMatch[1] === 'false') {
+                const issueNum = parseInt(issueMatch[1]);
+                console.log(`Found published article tied to Issue #${issueNum}. Closing it!`);
+                
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNum,
+                  body: `🎉 **Congratulations!** Your article has been officially approved and merged by our admins.\n\n🚀 The website is currently building. Your article will be live globally at [cyberseedsoul.in](https://cyberseedsoul.in) in approximately 2 minutes!\n\n*Closing this tracking issue.*`
+                });
+
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNum,
+                  state: 'closed'
+                });
+              }
+            }
