@@ -5,74 +5,72 @@ const matter = require('gray-matter');
 const authorsDir = path.join(process.cwd(), 'authors');
 let hasError = false;
 
-function logError(author, message) {
-    console.error(`❌ [REJECTED] Author '${author}': ${message}`);
+function logError(targetPath, message) {
+    console.error(`❌ [REJECTED] ${targetPath}: ${message}`);
     hasError = true;
 }
 
-console.log("🛡️ STARTING GITOPS BOUNCER VALIDATION...\n");
+console.log("🛡️ STARTING GITOPS BOUNCER VALIDATION (SHARD AWARE)...\n");
 
-const authors = fs.readdirSync(authorsDir);
+// 1. Loop through Shards (e.g., 'a', 'b', 'p', 's')
+const shards = fs.readdirSync(authorsDir);
 
-for (const author of authors) {
-    // Skip the templates folder and hidden files
-    if (author === '_templates' || author.startsWith('.')) continue;
+for (const shard of shards) {
+    if (shard === '_templates' || shard.startsWith('.')) continue;
 
-    const authorPath = path.join(authorsDir, author);
-    if (!fs.statSync(authorPath).isDirectory()) continue;
+    const shardPath = path.join(authorsDir, shard);
+    if (!fs.statSync(shardPath).isDirectory()) continue;
 
-    // 1. Validate Optional Author JSON
-    const authorJsonPath = path.join(authorPath, 'author.json');
-    if (fs.existsSync(authorJsonPath)) {
-        try {
-            const authorData = JSON.parse(fs.readFileSync(authorJsonPath, 'utf8'));
-            if (!authorData.name) logError(author, `author.json is missing the required 'name' field.`);
-        } catch (e) {
-            logError(author, `author.json contains invalid JSON syntax.`);
-        }
-    }
+    // 2. Loop through Authors in the Shard (e.g., 'pirateproprivate')
+    const authors = fs.readdirSync(shardPath);
+    for (const author of authors) {
+        if (author.startsWith('.')) continue;
 
-    // 2. Validate Articles
-    const articles = fs.readdirSync(authorPath);
-    for (const item of articles) {
-        const articlePath = path.join(authorPath, item);
-        
-        // Skip author.json at the root of their folder
-        if (item === 'author.json') continue;
+        const authorPath = path.join(shardPath, author);
+        if (!fs.statSync(authorPath).isDirectory()) continue;
 
-        if (!fs.statSync(articlePath).isDirectory()) {
-            logError(author, `Found loose file '${item}'. Articles must be inside their own specific folder.`);
-            continue;
-        }
+        // 3. Loop through Articles for the Author (e.g., 'pirate-post')
+        const articles = fs.readdirSync(authorPath);
+        for (const item of articles) {
+            if (item === 'author.json' || item.startsWith('.')) continue;
 
-        const mdPath = path.join(articlePath, 'index.md');
-        if (!fs.existsSync(mdPath)) {
-            logError(author, `Folder '${item}' is missing the required 'index.md' file.`);
-            continue;
-        }
+            const articlePath = path.join(authorPath, item);
+            if (!fs.statSync(articlePath).isDirectory()) {
+                logError(articlePath, `Loose file found. Articles must be inside their own specific folder.`);
+                continue;
+            }
 
-        // 3. Validate Frontmatter Schema
-        const contentRaw = fs.readFileSync(mdPath, 'utf8');
-        const parsed = matter(contentRaw);
-        const data = parsed.data;
+            const mdPath = path.join(articlePath, 'index.md');
+            if (!fs.existsSync(mdPath)) {
+                logError(articlePath, `Missing the required 'index.md' file.`);
+                continue;
+            }
 
-        if (!data.title) logError(author, `Article '${item}' is missing 'title' in frontmatter.`);
-        if (!data.slug) logError(author, `Article '${item}' is missing 'slug' in frontmatter.`);
-        if (!data.category) logError(author, `Article '${item}' is missing 'category' in frontmatter.`);
-        if (!data.date) logError(author, `Article '${item}' is missing 'date' in frontmatter.`);
-        
-       // 4. Validate Image Paths (Allow local or GitHub CDN, block random external URLs)
-        const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
-        const matches = [...parsed.content.matchAll(imageRegex)];
-        for (const match of matches) {
-            const imagePath = match[2];
-            if (imagePath.startsWith('http')) {
-                // Allow images uploaded natively via GitHub drag-and-drop
-                if (!imagePath.includes('github.com') && !imagePath.includes('githubusercontent.com')) {
-                    logError(author, `Article '${item}' contains external image '${imagePath}'. Please drag and drop images directly into the GitHub editor instead.`);
+            // 4. Validate Markdown Schema
+            try {
+                const contentRaw = fs.readFileSync(mdPath, 'utf8');
+                const parsed = matter(contentRaw);
+                const data = parsed.data;
+
+                if (!data.title) logError(mdPath, `Missing 'title' in frontmatter.`);
+                if (!data.slug) logError(mdPath, `Missing 'slug' in frontmatter.`);
+                if (!data.category) logError(mdPath, `Missing 'category' in frontmatter.`);
+                
+                // 5. Validate Image Paths (Allow local or GitHub CDN)
+                const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+                const matches = [...parsed.content.matchAll(imageRegex)];
+                for (const match of matches) {
+                    const imagePath = match[2];
+                    if (imagePath.startsWith('http')) {
+                        if (!imagePath.includes('github.com') && !imagePath.includes('githubusercontent.com')) {
+                            logError(mdPath, `Contains external image '${imagePath}'. Drag and drop images into GitHub directly.`);
+                        }
+                    } else if (!imagePath.startsWith('./images/') && !imagePath.startsWith('../')) {
+                        logError(mdPath, `Image path '${imagePath}' is invalid.`);
+                    }
                 }
-            } else if (!imagePath.startsWith('./images/') && !imagePath.startsWith('../')) {
-                logError(author, `Article '${item}' image path '${imagePath}' is invalid.`);
+            } catch (e) {
+                logError(mdPath, `Failed to parse Markdown or Frontmatter: ${e.message}`);
             }
         }
     }
