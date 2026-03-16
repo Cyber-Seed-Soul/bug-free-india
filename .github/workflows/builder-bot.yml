@@ -2,7 +2,12 @@ name: "IssueOps Workspace Builder"
 
 on:
   issues:
-    types: [opened]
+    types: [opened, edited]
+  workflow_dispatch: # THE OVERRIDE: Allows manual triggering for debugging!
+    inputs:
+      issue_number:
+        description: 'Issue Number to process manually (e.g., 8)'
+        required: true
 
 permissions:
   contents: write
@@ -25,28 +30,59 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            console.log("=========================================");
+            console.log("🚀 STARTING BUILDER BOT PIPELINE");
+            console.log("=========================================");
+
             const fs = require('fs');
             const path = require('path');
             
-            const issue = github.event.issue;
-            const actor = github.actor; 
-            const body = issue.body || "";
+            let issue;
+            
+            // Handle Manual Workflow Dispatch vs Auto Issue Trigger
+            if (context.eventName === 'workflow_dispatch') {
+               console.log(`⚠️ Manual run detected for issue #${context.payload.inputs.issue_number}`);
+               try {
+                   const response = await github.rest.issues.get({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: parseInt(context.payload.inputs.issue_number)
+                   });
+                   issue = response.data;
+               } catch (e) {
+                   console.log(`❌ ERROR: Could not find Issue #${context.payload.inputs.issue_number}.`);
+                   return;
+               }
+            } else {
+               issue = context.payload.issue;
+            }
 
-            // 1. THE BULLETPROOF TRIGGER (Checks the Title instead of the Body)
-            if (!issue.title || !issue.title.includes('[Workspace]')) {
-              console.log("Not a workspace request form. Going back to sleep.");
+            if (!issue) {
+              console.log("❌ ERROR: No issue payload found.");
               return;
             }
 
-            console.log(`🚀 Workspace Form detected! Starting build for ${actor}...`);
+            console.log(`-> Processing Issue #${issue.number}: "${issue.title}"`);
+            console.log(`-> Triggered by user: ${issue.user.login}`);
 
-            // 2. Aggressive Parsing Logic
+            const body = issue.body || "";
+            console.log(`-> Raw Issue Body Length: ${body.length} characters`);
+
+            // 1. Title Check
+            if (!issue.title || !issue.title.includes('[Workspace]')) {
+              console.log("❌ ABORT: Title does not contain '[Workspace]'. This is not a workspace request.");
+              return;
+            }
+
+            console.log("✅ Valid Workspace Title detected. Extracting form fields...");
+
+            // 2. Extraction Logic
             const extract = (label) => {
-              // Looks for the label, captures everything until the next ### or the end of the string
               const regex = new RegExp(`### ${label}\\s*([\\s\\S]*?)(?=\\n### |$)`);
               const match = body.match(regex);
               let val = match ? match[1].trim() : null;
-              if (val === "_No response_") val = ""; // Clean GitHub's empty state
+              if (val === "_No response_") val = ""; 
+              console.log(`   -> Extracted [${label}]: '${val}'`);
               return val;
             };
 
@@ -57,27 +93,30 @@ jobs:
             const rawTags = extract("Tags \\(Comma Separated\\)");
 
             if (!authorName || !slug || !rawCategory || !rawTags) {
+              console.log("❌ ABORT: Missing required fields in the markdown.");
               await github.rest.issues.createComment({ 
-                ...github.repo, 
+                ...context.repo, 
                 issue_number: issue.number, 
-                body: `⚠️ **Error:** Missing required fields. The bot could not parse the form.` 
+                body: `⚠️ **System Error:** Missing required fields. The bot could not parse the markdown form.` 
               });
               return;
             }
 
-            // 3. JSON VALIDATION (Categories & Tags)
+            // 3. JSON Validation
             let errors = [];
+            console.log("🛠️ Validating against JSON databases...");
 
-            // Validate Category
             try {
                const catJson = JSON.parse(fs.readFileSync('categories.json', 'utf8'));
                const validCats = Array.isArray(catJson) ? catJson : Object.keys(catJson);
                if (validCats.length > 0 && !validCats.includes(rawCategory)) {
+                 console.log(`   ❌ Invalid Category detected: ${rawCategory}`);
                  errors.push(`Invalid Category: \`${rawCategory}\`. Valid options include: ${validCats.slice(0,5).join(', ')}...`);
+               } else {
+                 console.log(`   ✅ Category valid.`);
                }
-            } catch (e) { console.log("Warning: categories.json missing or invalid"); }
+            } catch (e) { console.log("   ⚠️ Warning: categories.json missing or invalid", e.message); }
 
-            // Validate Tags
             const inputTags = rawTags.split(',').map(t => t.trim()).filter(t => t);
             try {
                const tagsJson = JSON.parse(fs.readFileSync('tags.json', 'utf8'));
@@ -85,34 +124,37 @@ jobs:
                if (validTagsList.length > 0) {
                  const invalidTags = inputTags.filter(t => !validTagsList.includes(t));
                  if (invalidTags.length > 0) {
+                   console.log(`   ❌ Invalid Tags detected: ${invalidTags.join(', ')}`);
                    errors.push(`Invalid Tags: \`${invalidTags.join(', ')}\`. Valid options include: ${validTagsList.slice(0,5).join(', ')}...`);
+                 } else {
+                   console.log(`   ✅ Tags valid.`);
                  }
                }
-            } catch (e) { console.log("Warning: tags.json missing or invalid"); }
+            } catch (e) { console.log("   ⚠️ Warning: tags.json missing or invalid", e.message); }
 
-            // 🛑 HALT IF VALIDATION FAILS
             if (errors.length > 0) {
+                 console.log("❌ ABORT: Validation failed. Leaving comment on issue...");
                  await github.rest.issues.createComment({
-                   ...github.repo,
+                   ...context.repo,
                    issue_number: issue.number,
                    body: `⚠️ **Validation Failed!**\n\n- ${errors.join('\n- ')}\n\n**Action Required:** Please close this issue and open a new one with correct values from the database.`
                  });
-                 return; // Stops the script before any folders are created
+                 return; 
             }
 
-            // 4. Shard Directory Calculation
+            console.log("✅ All validations passed! Building workspace...");
+            
+            // 4. File Construction
+            const actor = issue.user.login;
             const shard = actor.substring(0, 1).toLowerCase();
-            // Using a unique branch name so they don't commit directly to main
             const branchName = `workspace/${actor}/${slug}`;
             const uniquePath = `authors/${shard}/${actor}/${slug}/index.md`;
             
             const targetDir = path.dirname(uniquePath);
             fs.mkdirSync(targetDir, { recursive: true });
 
-            // 5. Create the Markdown
             const dateStr = new Date().toISOString().split('T')[0];
             const tagsFormatted = inputTags.map(t => `"${t}"`).join(', ');
-            // Clean the title for the markdown
             const cleanTitle = issue.title.replace(/\[Workspace\]:\s*/i, '').trim();
 
             const content = `---
@@ -124,16 +166,12 @@ jobs:
             category: "${rawCategory}"
             tags: [${tagsFormatted}]
             date: "${dateStr}"
-            ---
-            
-            # ${cleanTitle}
-            
-            Write your content here. Add an image by dragging it into your file tree on the left and linking it like this: ![desc](./images/your-image.jpg)
-            `;
+            ---\n\n# ${cleanTitle}\n\nWrite your content here. Add an image by dragging it into your file tree on the left and linking it like this: ![desc](./images/your-image.jpg)\n`;
 
             fs.writeFileSync(uniquePath, content.replace(/^\s+/gm, ''));
+            console.log(`   -> Created file: ${uniquePath}`);
 
-            // 6. Create Branch, Commit, and Push
+            // 5. Git Operations
             const exec = require('child_process').execSync;
             exec('git config user.name "Cyber Seed Soul Bot"');
             exec('git config user.email "bot@cyberseedsoul.in"');
@@ -141,14 +179,16 @@ jobs:
             exec(`git add ${uniquePath}`);
             exec(`git commit -m "feat: auto-created workspace for ${actor}: ${slug}"`);
             exec(`git push origin ${branchName}`);
+            console.log(`   -> Pushed to branch: ${branchName}`);
 
-            // 7. Magic Link
-            const magicLink = `https://github.dev/${github.context.repo.owner}/${github.context.repo.repo}/blob/${branchName}/${uniquePath}`;
+            // 6. Magic Link
+            const magicLink = `https://github.dev/${context.repo.owner}/${context.repo.repo}/blob/${branchName}/${uniquePath}`;
             
             await github.rest.issues.createComment({
-              ...github.repo,
+              ...context.repo,
               issue_number: issue.number,
               body: `✅ **Workspace Ready!**\n\nClick this magic link to write your article directly in your browser. You can drag and drop images into the file tree.\n\n🔗 [Start Writing Here](${magicLink})\n\n*(Note: When you are finished, commit your changes in the browser to automatically open a Pull Request!)*`
             });
 
-            await github.rest.issues.update({ ...github.repo, issue_number: issue.number, state: 'closed' });
+            await github.rest.issues.update({ ...context.repo, issue_number: issue.number, state: 'closed' });
+            console.log("✅ PIPELINE COMPLETE.");
