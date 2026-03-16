@@ -11,4 +11,6 @@ date: "2026-03-16"
 ---
 # Second Article
 Write your content here. Add an image by dragging it into your `images` folder on the left, and link it like this: 
-![Image description](./images/your-image.jpg)
+
+
+Is this going to be on the webiste? 
