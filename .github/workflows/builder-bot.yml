@@ -109,17 +109,19 @@ jobs:
                  return; 
             }
 
-            // 3. FILE PATH CALCULATION
+            // 3. FILE CONSTRUCTION
             const actor = issue.user.login;
             const shard = actor.substring(0, 1).toLowerCase();
             const safeSlug = slug.replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase(); 
+            const branchName = `workspace/${actor}/${safeSlug}`;
             const uniquePath = `authors/${shard}/${actor}/${safeSlug}/index.md`;
+            
+            fs.mkdirSync(path.dirname(uniquePath), { recursive: true });
 
             const dateStr = new Date().toISOString().split('T')[0];
             const tagsFormatted = inputTags.map(t => `"${t}"`).join(', ');
             const cleanTitle = issue.title.replace(/\[Workspace\]:\s*/i, '').trim() || safeSlug;
 
-            // 4. GENERATE THE MARKDOWN TEMPLATE
             const content = `---
             title: "${cleanTitle}"
             slug: "${safeSlug}"
@@ -133,18 +135,26 @@ jobs:
             description: "An insightful article written by ${authorName}."
             ---\n\n# ${cleanTitle}\n\nWrite your content here. \n\n**To add an image, simply drag and drop it from your computer directly into this text box!**\n`;
 
-            // 5. ENCODE THE URL FOR AUTO-FORKING
-            const encodedContent = encodeURIComponent(content.replace(/^\s+/gm, ''));
-            const magicLink = `https://github.com/${context.repo.owner}/${context.repo.repo}/new/main?filename=${uniquePath}&value=${encodedContent}`;
+            fs.writeFileSync(uniquePath, content.replace(/^\s+/gm, ''));
             
-            // 6. DELIVER THE LINK
+            // 4. GIT OPERATIONS (Pushing to a safe side-branch)
+            const runCmd = require('child_process').execSync;
+            runCmd('git config user.name "Cyber Seed Soul Bot"');
+            runCmd('git config user.email "bot@cyberseedsoul.in"');
+            runCmd(`git checkout -b ${branchName}`);
+            runCmd(`git add ${uniquePath}`);
+            runCmd(`git commit -m "feat: auto-created workspace for ${actor}: ${safeSlug}"`);
+            runCmd(`git push origin ${branchName}`);
+
+            // 5. MAGIC LINK (Pointing to the EDIT page)
+            const magicLink = `https://github.com/${context.repo.owner}/${context.repo.repo}/edit/${branchName}/${uniquePath}`;
+            
             await github.rest.issues.createComment({
               ...context.repo,
               issue_number: issue.number,
-              body: `✅ **Workspace Ready!**\n\nHi @${actor}, your writing environment is prepared. \n\n🔗 [**Click Here to Start Writing**](${magicLink})\n\n---\n### 📝 Instructions:\n1. Click the link above. *(GitHub will automatically create a secure workspace for you).* \n2. Write your article. You can drag and drop images directly into the editor!\n3. When finished, scroll to the top right and click the green **Propose new file** button.\n4. Click **Create Pull Request** to send it to us for review!`
+              body: `✅ **Workspace Ready!**\n\nHi @${actor}, your writing environment is prepared. \n\n🔗 [**Click Here to Start Writing**](${magicLink})\n\n---\n### 📝 Instructions:\n1. Click the link above. \n2. Click the green **Fork this repository** button. *(This safely copies the workspace for you).* \n3. Write your article! You can drag and drop images directly into the text box.\n4. When finished, click the green **Commit changes...** button at the top right.\n5. Click **Create Pull Request** to send it to us for review!`
             });
 
-            // Tag as in-progress
             try {
                await github.rest.issues.addLabels({ ...context.repo, issue_number: issue.number, labels: ['in-progress'] });
             } catch (e) {}
