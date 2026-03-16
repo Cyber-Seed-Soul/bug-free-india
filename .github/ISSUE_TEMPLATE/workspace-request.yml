@@ -1,0 +1,35 @@
+name: 🚀 Request Article Workspace
+description: Get your personal, isolated folder to write your article.
+title: "[Workspace]: <Your Article Title>"
+labels: ["workspace-request"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Welcome to the Cyber Seed Soul Platform! 
+        Fill out this form, and our automated bot will build your writing workspace in less than 10 seconds.
+  
+  - type: input
+    id: article_slug
+    attributes:
+      label: Article URL Slug
+      description: Use lowercase letters and hyphens only (e.g., how-to-learn-python). This will be your article's web address.
+      placeholder: my-awesome-article
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Primary Category
+      description: Select the category that best fits your article.
+      options:
+        - Platform Engineering
+        - Data Science
+        - Cyber Security
+        - Open Source
+        - Motivation
+    validations:
+      required: true

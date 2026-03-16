@@ -1,51 +1,29 @@
-name: Author Sandbox Security
+name: "GitOps Bouncer (Schema Validator)"
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    paths:
+      - 'authors/**'
+  push:
+    branches:
+      - main
+    paths:
+      - 'authors/**'
 
 jobs:
-  enforce-sandbox:
+  validate-schema:
     runs-on: ubuntu-latest
     steps:
-      - name: Check Modified Files
-        uses: actions/github-script@v6
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          script: |
-            const actor = context.actor;
-            console.log(`👤 PR Author: ${actor}`);
-            
-            // Allow repository owners to bypass
-            const admins = ['ScientificSam']; 
-            if (admins.includes(actor)) {
-              console.log('🛡️ Admin detected. Bypassing sandbox rules.');
-              return;
-            }
+          node-version: '20'
 
-            const allowedPrefix = `authors/${actor}/`;
-            console.log(`🔒 Allowed Directory: ${allowedPrefix}`);
+      - name: Install Gray-Matter Parser
+        run: npm install gray-matter
 
-            // Fetch the list of files changed in this PR
-            const { data: files } = await github.rest.pulls.listFiles({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.issue.number,
-            });
-
-            let violationFound = false;
-
-            files.forEach(file => {
-              console.log(`📄 Checking file: ${file.filename}`);
-              
-              // Rule: If they touch anything in the repo, it MUST be inside their specific folder
-              if (!file.filename.startsWith(allowedPrefix)) {
-                console.error(`❌ SECURITY VIOLATION: User ${actor} attempted to modify ${file.filename}`);
-                violationFound = true;
-              }
-            });
-
-            if (violationFound) {
-              core.setFailed(`🚨 PR Rejected: You are only allowed to modify files inside your dedicated folder (${allowedPrefix}).`);
-            } else {
-              console.log(`✅ Sandbox check passed. All files belong to ${actor}.`);
-            }
+      - name: Run Schema Bouncer
+        run: node scripts/bouncer.js
