@@ -13,4 +13,4 @@ description: "An insightful article written by Pirate."
 ---
 # Pirate Article for pirates
 Write your content here. 
-**To add an image, simply drag and drop it from your computer directly into this text box!**
+Why is this displaying in atbale like thing in the md file? 
