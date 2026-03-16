@@ -112,25 +112,22 @@ jobs:
             // 3. FILE CONSTRUCTION
             const actor = issue.user.login;
             const shard = actor.substring(0, 1).toLowerCase();
-            const safeSlug = slug.replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase();
-            const branchName = `workspace/${actor}/${safeSlug}`;
-            const uniquePath = `authors/${shard}/${actor}/${slug}/index.md`;
-            const imageFolderPath = `authors/${shard}/${actor}/${slug}/images`; // THE IMAGE FOLDER
+            const safeSlug = slug.replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase(); 
+            const uniquePath = `authors/${shard}/${actor}/${safeSlug}/index.md`;
+            const imageFolderPath = `authors/${shard}/${actor}/${safeSlug}/images`; 
             
-            // Create directories
             fs.mkdirSync(path.dirname(uniquePath), { recursive: true });
             fs.mkdirSync(imageFolderPath, { recursive: true });
-
-            // Create .gitkeep to force the images folder to exist
             fs.writeFileSync(path.join(imageFolderPath, '.gitkeep'), '');
 
             const dateStr = new Date().toISOString().split('T')[0];
             const tagsFormatted = inputTags.map(t => `"${t}"`).join(', ');
-            const cleanTitle = issue.title.replace(/\[Workspace\]:\s*/i, '').trim() || slug;
+            const cleanTitle = issue.title.replace(/\[Workspace\]:\s*/i, '').trim() || safeSlug;
 
+            // ADDED: draft: true (Prevents Astro from publishing the blank template)
             const content = `---
             title: "${cleanTitle}"
-            slug: "${slug}"
+            slug: "${safeSlug}"
             author: "${authorName}"
             author_email: "${authorEmail}"
             github_username: "${actor}"
@@ -138,38 +135,33 @@ jobs:
             category: "${rawCategory}"
             tags: [${tagsFormatted}]
             pubDatetime: "${dateStr}"
+            draft: true
             description: "An insightful article written by ${authorName}."
             ---\n\n# ${cleanTitle}\n\nWrite your content here. Add an image by dragging it into your \`images\` folder on the left, and link it like this: \n\n![Image description](./images/your-image.jpg)\n`;
 
-            // Write the index.md file
             fs.writeFileSync(uniquePath, content.replace(/^\s+/gm, ''));
             
-            // 4. GIT OPERATIONS
+            // 4. GIT OPERATIONS (Committing directly to MAIN)
             const runCmd = require('child_process').execSync;
             runCmd('git config user.name "Cyber Seed Soul Bot"');
             runCmd('git config user.email "bot@cyberseedsoul.in"');
-            runCmd(`git checkout -b ${branchName}`);
             runCmd(`git add ${uniquePath}`);
-            runCmd(`git add ${imageFolderPath}/.gitkeep`); // ADD THE IMAGES FOLDER TO GIT
-            runCmd(`git commit -m "feat: auto-created workspace for ${actor}: ${slug}"`);
-            runCmd(`git push origin ${branchName}`);
+            runCmd(`git add ${imageFolderPath}/.gitkeep`);
+            runCmd(`git commit -m "feat: auto-created workspace for ${actor}: ${safeSlug}"`);
+            // Pull with rebase to prevent race conditions if two authors request at the exact same second
+            runCmd(`git pull origin main --rebase`);
+            runCmd(`git push origin main`);
 
-            // 5. MAGIC LINK & KEEP ISSUE OPEN AS DASHBOARD
-            const magicLink = `https://github.dev/${context.repo.owner}/${context.repo.repo}/blob/${branchName}/${uniquePath}`;
+            // 5. MAGIC LINK & AUTO-FORK INSTRUCTIONS
+            // Link now points directly to the main branch
+            const magicLink = `https://github.dev/${context.repo.owner}/${context.repo.repo}/blob/main/${uniquePath}`;
             
             await github.rest.issues.createComment({
               ...context.repo,
               issue_number: issue.number,
-              body: `✅ **Workspace Ready!**\n\nHi @${actor}, your workspace is built. \n\n🔗 [**Click Here to Start Writing**](${magicLink})\n\n---\n### 📝 Next Steps:\n1. Write your article using the link above.\n2. When finished, click **Source Control** (the tree icon ᛘ), type a commit message, and click **Commit & Push**.\n3. Click **Create Pull Request**.\n\n*Note: I am leaving this tracking issue **OPEN**. It will automatically close once your article successfully passes formatting checks and is published to the live website!*`
+              body: `✅ **Workspace Ready!**\n\nHi @${actor}, your workspace is built. \n\n🔗 [**Click Here to Start Writing**](${magicLink})\n\n---\n### 📝 Instructions for Contributors:\n1. Click the link above. *(Note: GitHub will automatically create a secure "Fork" for you in the background so you can save your work).* \n2. **Important:** Change \`draft: true\` to \`draft: false\` at the top of the file when you are ready to publish!\n3. When finished, click the **Source Control** icon (the tree icon ᛘ) on the far left menu.\n4. Type a commit message and click **Commit & Push**.\n5. Click **Create Pull Request**.`
             });
 
-            // Add an "in-progress" label so admins know it's being worked on
             try {
-               await github.rest.issues.addLabels({
-                 ...context.repo,
-                 issue_number: issue.number,
-                 labels: ['in-progress']
-               });
-            } catch (e) { console.log("Warning: Could not add label."); }
-            
-            // REMOVED: The state: 'closed' API call is completely gone!
+               await github.rest.issues.addLabels({ ...context.repo, issue_number: issue.number, labels: ['in-progress'] });
+            } catch (e) {}
