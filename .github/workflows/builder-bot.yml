@@ -112,7 +112,8 @@ jobs:
             // 3. FILE CONSTRUCTION
             const actor = issue.user.login;
             const shard = actor.substring(0, 1).toLowerCase();
-            const branchName = `workspace/${actor}/${slug}`;
+            const safeSlug = slug.replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase();
+            const branchName = `workspace/${actor}/${safeSlug}`;
             const uniquePath = `authors/${shard}/${actor}/${slug}/index.md`;
             const imageFolderPath = `authors/${shard}/${actor}/${slug}/images`; // THE IMAGE FOLDER
             

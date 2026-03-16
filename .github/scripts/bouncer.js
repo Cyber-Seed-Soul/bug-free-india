@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const matter = require('gray-matter');
 
-const authorsDir = path.join(__dirname, '../authors');
+const authorsDir = path.join(process.cwd(), 'authors');
 let hasError = false;
 
 function logError(author, message) {
