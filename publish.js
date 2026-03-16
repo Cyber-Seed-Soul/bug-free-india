@@ -2,8 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const matter = require('gray-matter');
 const crypto = require('crypto');
+const FormData = require('form-data'); // The final dependency
 
-// PERMANENT ARCHITECTURE: No external form-data package used. 
 const STRAPI_URL = (process.env.STRAPI_URL || '').replace(/\/$/, '');
 const STRAPI_TOKEN = process.env.STRAPI_WRITE_TOKEN;
 
@@ -47,27 +47,20 @@ async function handleImage(localPath, authorName, articleSlug) {
         console.log(`   -> ⚠️ [WARNING] Cache read denied. Bypassing check.`);
     }
 
-    console.log(`   -> [IMAGE] Initiating Native Web upload...`);
+    console.log(`   -> [IMAGE] Initiating secure upload...`);
     try {
-        let mimeType = 'image/jpeg';
-        if (ext === '.png') mimeType = 'image/png';
-        if (ext === '.webp') mimeType = 'image/webp';
-        if (ext === '.gif') mimeType = 'image/gif';
-
-        // STRICT NATIVE FIX: Forcing explicit Blob properties to prevent 404 payload stripping
-        const blob = new Blob([fileBuffer], { type: mimeType });
-        const form = new FormData(); 
-        form.append('files', blob, uniqueFileName);
+        const form = new FormData();
+        // Passing the raw buffer directly prevents native fetch bugs
+        form.append('files', fileBuffer, { filename: uniqueFileName });
 
         const options = {
             method: 'POST',
             headers: { 
                 'Authorization': `Bearer ${STRAPI_TOKEN}`,
-                // Do NOT set Content-Type; Native fetch must generate the boundary string
+                ...form.getHeaders() // Injects perfect multipart boundaries
             }, 
-            // Setting explicitly to node's underlying stream engine
-            body: form,
-            duplex: 'half' 
+            // THE SILVER BULLET: .getBuffer() converts it to memory synchronously. No streams to deadlock!
+            body: form.getBuffer() 
         };
 
         const res = await fetch(`${STRAPI_URL}/api/upload`, options);
@@ -99,7 +92,7 @@ async function getOrCreateTerm(endpoint, termName, map) {
 }
 
 async function runPublisher() {
-    console.log("🚀 STARTING FINAL PUBLISHER ENGINE\n");
+    console.log("🚀 STARTING THE BULLETPROOF PUBLISHER ENGINE\n");
 
     try {
         console.log("🛠️ Mapping Taxonomies...");
@@ -133,7 +126,6 @@ async function runPublisher() {
                     const contentRaw = fs.readFileSync(mdPath, 'utf8');
                     const parsed = matter(contentRaw);
                     
-                    // The frontmatter is required for this to work
                     if (!parsed.data.slug) {
                         console.log(`   -> ⚠️ [SKIPPED] No frontmatter/slug found.`);
                         continue;
