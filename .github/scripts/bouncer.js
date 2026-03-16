@@ -61,15 +61,18 @@ for (const author of authors) {
         if (!data.category) logError(author, `Article '${item}' is missing 'category' in frontmatter.`);
         if (!data.date) logError(author, `Article '${item}' is missing 'date' in frontmatter.`);
         
-        // 4. Validate Image Paths (No absolute URLs, no external hosting, strictly local relative paths)
+       // 4. Validate Image Paths (Allow local or GitHub CDN, block random external URLs)
         const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
         const matches = [...parsed.content.matchAll(imageRegex)];
         for (const match of matches) {
             const imagePath = match[2];
             if (imagePath.startsWith('http')) {
-                logError(author, `Article '${item}' contains external image link '${imagePath}'. Images must be hosted locally in your images/ folder.`);
-            } else if (!imagePath.startsWith('./images/')) {
-                logError(author, `Article '${item}' image path '${imagePath}' is invalid. It must start with './images/'.`);
+                // Allow images uploaded natively via GitHub drag-and-drop
+                if (!imagePath.includes('github.com') && !imagePath.includes('githubusercontent.com')) {
+                    logError(author, `Article '${item}' contains external image '${imagePath}'. Please drag and drop images directly into the GitHub editor instead.`);
+                }
+            } else if (!imagePath.startsWith('./images/') && !imagePath.startsWith('../')) {
+                logError(author, `Article '${item}' image path '${imagePath}' is invalid.`);
             }
         }
     }
