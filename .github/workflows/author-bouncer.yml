@@ -26,4 +26,4 @@ jobs:
         run: npm install gray-matter
 
       - name: Run Schema Bouncer
-        run: node scripts/bouncer.js
+        run: node .github/scripts/bouncer.js

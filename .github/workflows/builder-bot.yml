@@ -133,6 +133,7 @@ jobs:
             author_name: "${authorName}"
             author_email: "${authorEmail}"
             github_username: "${actor}"
+            issue_number: ${issue.number}
             category: "${rawCategory}"
             tags: [${tagsFormatted}]
             date: "${dateStr}"
@@ -151,13 +152,22 @@ jobs:
             runCmd(`git commit -m "feat: auto-created workspace for ${actor}: ${slug}"`);
             runCmd(`git push origin ${branchName}`);
 
-            // 5. MAGIC LINK & AUTHOR INSTRUCTIONS
+            // 5. MAGIC LINK & KEEP ISSUE OPEN AS DASHBOARD
             const magicLink = `https://github.dev/${context.repo.owner}/${context.repo.repo}/blob/${branchName}/${uniquePath}`;
             
             await github.rest.issues.createComment({
               ...context.repo,
               issue_number: issue.number,
-              body: `✅ **Workspace Ready!**\n\nHi @${actor}, your workspace is built. Click this magic link to write your article directly in your browser. You will see an \`images\` folder ready for your pictures.\n\n🔗 [**Click Here to Start Writing**](${magicLink})\n\n---\n### 📝 How to submit when you are finished:\n1. Click the **Source Control** icon on the far left menu (it looks like a branching tree ᛘ).\n2. Type a message like "Finished draft" in the box and click the blue **Commit & Push** button.\n3. A notification will pop up at the bottom right. Click **Create Pull Request** to send it to us for review!`
+              body: `✅ **Workspace Ready!**\n\nHi @${actor}, your workspace is built. \n\n🔗 [**Click Here to Start Writing**](${magicLink})\n\n---\n### 📝 Next Steps:\n1. Write your article using the link above.\n2. When finished, click **Source Control** (the tree icon ᛘ), type a commit message, and click **Commit & Push**.\n3. Click **Create Pull Request**.\n\n*Note: I am leaving this tracking issue **OPEN**. It will automatically close once your article successfully passes formatting checks and is published to the live website!*`
             });
 
-            await github.rest.issues.update({ ...context.repo, issue_number: issue.number, state: 'closed' });
+            // Add an "in-progress" label so admins know it's being worked on
+            try {
+               await github.rest.issues.addLabels({
+                 ...context.repo,
+                 issue_number: issue.number,
+                 labels: ['in-progress']
+               });
+            } catch (e) { console.log("Warning: Could not add label."); }
+            
+            // REMOVED: The state: 'closed' API call is completely gone!
