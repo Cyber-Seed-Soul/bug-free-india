@@ -32,31 +32,36 @@ jobs:
             const actor = github.actor; 
             const body = issue.body || "";
 
-            // 1. THE BULLETPROOF TRIGGER
-            // Instead of checking labels, we check if the form text actually exists
-            if (!body.includes('### Your Public Display Name')) {
+            // 1. THE BULLETPROOF TRIGGER (Checks the Title instead of the Body)
+            if (!issue.title || !issue.title.includes('[Workspace]')) {
               console.log("Not a workspace request form. Going back to sleep.");
               return;
             }
 
-            console.log(`🚀 Form detected! Starting build for ${actor}...`);
+            console.log(`🚀 Workspace Form detected! Starting build for ${actor}...`);
 
-            // 2. Parse the Issue Form
+            // 2. Aggressive Parsing Logic
             const extract = (label) => {
-              const regex = new RegExp(`### ${label}\\s+([\\s\\S]+?)(?:\\n### |$)`);
+              // Looks for the label, captures everything until the next ### or the end of the string
+              const regex = new RegExp(`### ${label}\\s*([\\s\\S]*?)(?=\\n### |$)`);
               const match = body.match(regex);
-              return match ? match[1].trim() : null;
+              let val = match ? match[1].trim() : null;
+              if (val === "_No response_") val = ""; // Clean GitHub's empty state
+              return val;
             };
 
             const authorName = extract("Your Public Display Name");
-            const authorEmail = extract("Your Public Contact Email") || "";
-            // Handle edge cases where users might accidentally delete the [Workspace]: prefix in the title
+            const authorEmail = extract("Your Public Contact Email");
             const slug = extract("Article URL Slug");
             const rawCategory = extract("Primary Category");
             const rawTags = extract("Tags \\(Comma Separated\\)");
 
             if (!authorName || !slug || !rawCategory || !rawTags) {
-              await github.rest.issues.createComment({ ...github.repo, issue_number: issue.number, body: `⚠️ **Error:** Missing required fields. Please fill out the form completely.` });
+              await github.rest.issues.createComment({ 
+                ...github.repo, 
+                issue_number: issue.number, 
+                body: `⚠️ **Error:** Missing required fields. The bot could not parse the form.` 
+              });
               return;
             }
 
@@ -70,7 +75,7 @@ jobs:
                if (validCats.length > 0 && !validCats.includes(rawCategory)) {
                  errors.push(`Invalid Category: \`${rawCategory}\`. Valid options include: ${validCats.slice(0,5).join(', ')}...`);
                }
-            } catch (e) { console.log("Skipping category validation (categories.json missing or invalid)"); }
+            } catch (e) { console.log("Warning: categories.json missing or invalid"); }
 
             // Validate Tags
             const inputTags = rawTags.split(',').map(t => t.trim()).filter(t => t);
@@ -80,23 +85,25 @@ jobs:
                if (validTagsList.length > 0) {
                  const invalidTags = inputTags.filter(t => !validTagsList.includes(t));
                  if (invalidTags.length > 0) {
-                   errors.push(`Invalid Tags: \`${invalidTags.join(', ')}\`.`);
+                   errors.push(`Invalid Tags: \`${invalidTags.join(', ')}\`. Valid options include: ${validTagsList.slice(0,5).join(', ')}...`);
                  }
                }
-            } catch (e) { console.log("Skipping tag validation (tags.json missing or invalid)"); }
+            } catch (e) { console.log("Warning: tags.json missing or invalid"); }
 
             // 🛑 HALT IF VALIDATION FAILS
             if (errors.length > 0) {
                  await github.rest.issues.createComment({
                    ...github.repo,
                    issue_number: issue.number,
-                   body: `⚠️ **Validation Failed:**\n- ${errors.join('\n- ')}\n\nPlease close this issue and submit a new one with exact matching values from our database.`
+                   body: `⚠️ **Validation Failed!**\n\n- ${errors.join('\n- ')}\n\n**Action Required:** Please close this issue and open a new one with correct values from the database.`
                  });
                  return; // Stops the script before any folders are created
             }
 
             // 4. Shard Directory Calculation
             const shard = actor.substring(0, 1).toLowerCase();
+            // Using a unique branch name so they don't commit directly to main
+            const branchName = `workspace/${actor}/${slug}`;
             const uniquePath = `authors/${shard}/${actor}/${slug}/index.md`;
             
             const targetDir = path.dirname(uniquePath);
@@ -105,9 +112,11 @@ jobs:
             // 5. Create the Markdown
             const dateStr = new Date().toISOString().split('T')[0];
             const tagsFormatted = inputTags.map(t => `"${t}"`).join(', ');
+            // Clean the title for the markdown
+            const cleanTitle = issue.title.replace(/\[Workspace\]:\s*/i, '').trim();
 
             const content = `---
-            title: "${issue.title.replace('[Workspace]: ', '').trim()}"
+            title: "${cleanTitle}"
             slug: "${slug}"
             author_name: "${authorName}"
             author_email: "${authorEmail}"
@@ -117,28 +126,29 @@ jobs:
             date: "${dateStr}"
             ---
             
-            # Write Your Title Here
+            # ${cleanTitle}
             
-            Write your content here. Add an image by dragging it into your file tree and linking it like this: ![desc](./images/your-image.jpg)
+            Write your content here. Add an image by dragging it into your file tree on the left and linking it like this: ![desc](./images/your-image.jpg)
             `;
 
             fs.writeFileSync(uniquePath, content.replace(/^\s+/gm, ''));
 
-            // 6. Commit and Push
+            // 6. Create Branch, Commit, and Push
             const exec = require('child_process').execSync;
             exec('git config user.name "Cyber Seed Soul Bot"');
             exec('git config user.email "bot@cyberseedsoul.in"');
+            exec(`git checkout -b ${branchName}`);
             exec(`git add ${uniquePath}`);
             exec(`git commit -m "feat: auto-created workspace for ${actor}: ${slug}"`);
-            exec('git push origin main');
+            exec(`git push origin ${branchName}`);
 
             // 7. Magic Link
-            const magicLink = `https://github.dev/${github.context.repo.owner}/${github.context.repo.repo}/blob/main/${uniquePath}`;
+            const magicLink = `https://github.dev/${github.context.repo.owner}/${github.context.repo.repo}/blob/${branchName}/${uniquePath}`;
             
             await github.rest.issues.createComment({
               ...github.repo,
               issue_number: issue.number,
-              body: `✅ **Workspace Ready!**\n\nClick this magic link to write your article directly in your browser. You can drag and drop images into the file tree.\n\n🔗 [Start Writing Here](${magicLink})`
+              body: `✅ **Workspace Ready!**\n\nClick this magic link to write your article directly in your browser. You can drag and drop images into the file tree.\n\n🔗 [Start Writing Here](${magicLink})\n\n*(Note: When you are finished, commit your changes in the browser to automatically open a Pull Request!)*`
             });
 
             await github.rest.issues.update({ ...github.repo, issue_number: issue.number, state: 'closed' });
