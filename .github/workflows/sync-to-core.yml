@@ -6,6 +6,12 @@ on:
     paths:
       - 'authors/**'
 
+# THE FIX FOR THE 403 ERROR: Explicit Write Permissions
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
 jobs:
   bridge-and-close:
     runs-on: ubuntu-latest
@@ -14,7 +20,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: 'database-repo'
-          fetch-depth: 2
 
       - name: Checkout Frontend Astro Repo
         uses: actions/checkout@v4
@@ -23,64 +28,84 @@ jobs:
           token: ${{ secrets.CORE_SYNC_TOKEN }}
           path: 'frontend-repo'
 
-      - name: Sync Markdown and Auto-Publish
-        run: |
-          mkdir -p frontend-repo/src/data/blog/authors
-          rsync -av --exclude='_templates' database-repo/authors/ frontend-repo/src/data/blog/authors/
-          
-          # THE MAGIC TRICK: Find all articles going to Astro and force them to draft: false
-          find frontend-repo/src/data/blog/authors -type f -name "index.md" -exec sed -i 's/draft: true/draft: false/g' {} +
-          
-          cd frontend-repo
-          git config user.name "Cyber Seed Soul Bot"
-          git config user.email "bot@cyberseedsoul.in"
-          git add .
-          git commit -m "feat: auto-sync and publish approved articles from database" || echo "No changes to commit"
-          git push
-
-      - name: Provide Author Feedback & Close Issue
+      - name: Execute FOSS Bridge & Lifecycle Automation
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
-            const execSync = require('child_process').execSync;
-            
-            console.log("Searching for modified Markdown files to close the loop...");
-            
-            let changedFiles = [];
-            try {
-              changedFiles = execSync('cd database-repo && git diff HEAD^ HEAD --name-only').toString().split('\n').filter(f => f.endsWith('index.md'));
-            } catch (e) {
-              console.log("Could not determine diff. Skipping auto-close.");
-              return;
-            }
+            const path = require('path');
+            const { execSync } = require('child_process');
 
+            console.log("🚀 STARTING FOSS SYNC AND LIFECYCLE BRIDGE...");
+
+            // 1. MIRROR THE DATABASE TO ASTRO
+            execSync('mkdir -p frontend-repo/src/data/blog/authors');
+            execSync("rsync -av --exclude='_templates' database-repo/authors/ frontend-repo/src/data/blog/authors/");
+            console.log("✅ Rsync complete.");
+
+            // 2. GET EXACT FILES CHANGED IN THIS MERGE (API)
+            const commit = await github.rest.repos.getCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha
+            });
+
+            const changedFiles = commit.data.files.map(f => f.filename).filter(f => f.endsWith('index.md'));
+            console.log("📝 Files changed in this merge:", changedFiles);
+
+            let issuesToClose = new Set();
+
+            // 3. TARGETED AUTO-PUBLISH (Only publish the merged files)
             for (const file of changedFiles) {
-              const fullPath = `database-repo/${file}`;
-              if (!fs.existsSync(fullPath)) continue;
+              const astroFilePath = path.join('frontend-repo/src/data/blog', file.replace('database-repo/', ''));
               
-              const content = fs.readFileSync(fullPath, 'utf8');
-              const issueMatch = content.match(/issue_number:\s*(\d+)/);
-              
-              // If it has an issue number, it was merged, so we close it!
-              if (issueMatch) {
-                const issueNum = parseInt(issueMatch[1]);
-                console.log(`Found published article tied to Issue #${issueNum}. Closing it!`);
-                
-                await github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: issueNum,
-                  body: `🎉 **Congratulations!** Your article has been officially approved and merged by our admins.\n\n🚀 The website is currently building. Your article will be live globally at [cyberseedsoul.in](https://cyberseedsoul.in) in approximately 2 minutes!\n\n*Closing this tracking issue.*`
-                });
+              if (fs.existsSync(astroFilePath)) {
+                 let content = fs.readFileSync(astroFilePath, 'utf8');
+                 
+                 // Safely flip the draft status for THIS file only
+                 content = content.replace(/draft:\s*true/, 'draft: false');
+                 fs.writeFileSync(astroFilePath, content);
 
-                await github.rest.issues.update({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: issueNum,
-                  state: 'closed',
-                  state_reason: 'completed'
-                });
+                 // Extract issue tracking number
+                 const issueMatch = content.match(/issue_number:\s*(\d+)/);
+                 if (issueMatch) issuesToClose.add(parseInt(issueMatch[1]));
               }
             }
+
+            // 4. COMMIT & PUSH TO ASTRO
+            try {
+              execSync('cd frontend-repo && git config user.name "Cyber Seed Soul Bot" && git config user.email "bot@cyberseedsoul.in" && git add . && git commit -m "feat: auto-sync and publish approved FOSS articles" && git push');
+              console.log("✅ Successfully pushed mapped articles to Astro Core.");
+            } catch (e) {
+              console.log("ℹ️ No new changes to push to Astro Core.");
+            }
+
+            // 5. SECURE ISSUE CLOSURE (Only if Open)
+            for (const issueNum of issuesToClose) {
+               try {
+                 const issueData = await github.rest.issues.get({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issueNum
+                 });
+
+                 if (issueData.data.state === 'open') {
+                    console.log(`🎉 Closing Issue #${issueNum}...`);
+                    await github.rest.issues.createComment({
+                      owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNum,
+                      body: `🎉 **Congratulations!** Your article has been officially approved and merged by our admins.\n\n🚀 The website is currently building. Your article will be live globally at [cyberseedsoul.in](https://cyberseedsoul.in) in approximately 2 minutes!\n\n*Closing this tracking issue.*`
+                    });
+                    
+                    await github.rest.issues.update({
+                      owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNum, 
+                      state: 'closed', state_reason: 'completed'
+                    });
+                 } else {
+                    console.log(`ℹ️ Issue #${issueNum} is already closed (Likely an article update). Skipping comment.`);
+                 }
+               } catch (e) {
+                  console.log(`⚠️ Could not process issue #${issueNum}:`, e.message);
+               }
+            }
+            console.log("🏁 BRIDGE COMPLETE.");
