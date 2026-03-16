@@ -39,9 +39,9 @@ jobs:
 
             console.log("🚀 STARTING FOSS SYNC AND LIFECYCLE BRIDGE...");
 
-            // 1. MIRROR THE DATABASE TO ASTRO
-            execSync('mkdir -p frontend-repo/src/data/blog/authors');
-            execSync("rsync -av --exclude='_templates' database-repo/authors/ frontend-repo/src/data/blog/authors/");
+            // 1. MIRROR THE DATABASE TO ASTRO (FIXED: Pointing to the 'frontend' folder!)
+            execSync('mkdir -p frontend-repo/frontend/src/data/blog/authors');
+            execSync("rsync -av --exclude='_templates' database-repo/authors/ frontend-repo/frontend/src/data/blog/authors/");
             console.log("✅ Rsync complete.");
 
             // 2. GET EXACT FILES CHANGED IN THIS MERGE (API)
@@ -58,7 +58,8 @@ jobs:
 
             // 3. TARGETED AUTO-PUBLISH (Only publish the merged files)
             for (const file of changedFiles) {
-              const astroFilePath = path.join('frontend-repo/src/data/blog', file.replace('database-repo/', ''));
+              // FIXED: Pointing to the 'frontend' folder!
+              const astroFilePath = path.join('frontend-repo/frontend/src/data/blog', file.replace('database-repo/', ''));
               
               if (fs.existsSync(astroFilePath)) {
                  let content = fs.readFileSync(astroFilePath, 'utf8');
