@@ -9,13 +9,12 @@ body:
     attributes:
       value: |
         ## Welcome, Author! 
-        Fill out this form. Ignore the buttons at the bottom (Assignee, Labels, etc.) and just click the green **Create** button.
+        Fill out this form. Ignore the buttons at the bottom (Assignee, Labels) and just click the green **Create** button.
   
   - type: input
     id: author_name
     attributes:
       label: Your Public Display Name
-      description: The name you want shown on the website (e.g., Prof. Sam).
       placeholder: Scientific Sam
     validations:
       required: true
@@ -24,7 +23,6 @@ body:
     id: author_email
     attributes:
       label: Your Public Contact Email
-      description: A public email address if you want readers to contact you (Optional).
       placeholder: sam@cyberseedsoul.in
     validations:
       required: false
@@ -38,16 +36,12 @@ body:
     validations:
       required: true
 
-  - type: dropdown
+  - type: input
     id: category
     attributes:
       label: Primary Category
-      options:
-        - Platform Engineering
-        - Data Science
-        - Cyber Security
-        - Open Source
-        - Motivation
+      description: You must type ONE valid category (e.g., Cybersecurity, Data Science).
+      placeholder: Cybersecurity
     validations:
       required: true
 
@@ -55,7 +49,7 @@ body:
     id: tags
     attributes:
       label: Tags (Comma Separated)
-      description: You must provide at least one valid tag (e.g., DevOps, Architecture).
-      placeholder: DevOps, Open Source
+      description: Provide at least one valid tag (e.g., Privacy, Security).
+      placeholder: Privacy, Security
     validations:
       required: true

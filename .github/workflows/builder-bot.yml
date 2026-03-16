@@ -44,36 +44,47 @@ jobs:
             const authorName = extract("Your Public Display Name");
             const authorEmail = extract("Your Public Contact Email") || "";
             const slug = extract("Article URL Slug");
-            const category = extract("Primary Category");
+            const rawCategory = extract("Primary Category");
             const rawTags = extract("Tags \\(Comma Separated\\)");
 
-            if (!authorName || !slug || !category || !rawTags) {
+            if (!authorName || !slug || !rawCategory || !rawTags) {
               await github.rest.issues.createComment({ ...github.repo, issue_number: issue.number, body: `⚠️ **Error:** Missing required fields.` });
               return;
             }
 
-            // 2. Validate Tags against tags.json
-            let validTagsList = [];
+            // 2. JSON VALIDATION (Categories & Tags)
+            let errors = [];
+
+            // Validate Category
+            try {
+               const catJson = JSON.parse(fs.readFileSync('categories.json', 'utf8'));
+               const validCats = Array.isArray(catJson) ? catJson : Object.keys(catJson);
+               if (validCats.length > 0 && !validCats.includes(rawCategory)) {
+                 errors.push(`Invalid Category: \`${rawCategory}\`. Valid options include: ${validCats.slice(0,5).join(', ')}...`);
+               }
+            } catch (e) { console.log("Skipping category validation (categories.json missing or invalid)"); }
+
+            // Validate Tags
+            const inputTags = rawTags.split(',').map(t => t.trim()).filter(t => t);
             try {
                const tagsJson = JSON.parse(fs.readFileSync('tags.json', 'utf8'));
-               // Assuming tags.json is an array of strings or objects. Adjust as needed.
-               validTagsList = Array.isArray(tagsJson) ? tagsJson : Object.keys(tagsJson);
-            } catch (e) {
-               console.log("No tags.json found or invalid format. Skipping strict tag validation.");
-            }
+               const validTagsList = Array.isArray(tagsJson) ? tagsJson : Object.keys(tagsJson);
+               if (validTagsList.length > 0) {
+                 const invalidTags = inputTags.filter(t => !validTagsList.includes(t));
+                 if (invalidTags.length > 0) {
+                   errors.push(`Invalid Tags: \`${invalidTags.join(', ')}\`.`);
+                 }
+               }
+            } catch (e) { console.log("Skipping tag validation (tags.json missing or invalid)"); }
 
-            const inputTags = rawTags.split(',').map(t => t.trim()).filter(t => t);
-            
-            if (validTagsList.length > 0) {
-               const invalidTags = inputTags.filter(t => !validTagsList.includes(t));
-               if (invalidTags.length > 0) {
+            // Halt if validation fails
+            if (errors.length > 0) {
                  await github.rest.issues.createComment({
                    ...github.repo,
                    issue_number: issue.number,
-                   body: `⚠️ **Validation Failed:** The following tags are invalid: \`${invalidTags.join(', ')}\`.\n\nPlease reply with valid tags from the database.`
+                   body: `⚠️ **Validation Failed:**\n- ${errors.join('\n- ')}\n\nPlease close this issue and submit a new one with exact values from the database.`
                  });
-                 return; // Halt creation
-               }
+                 return; 
             }
 
             // 3. Shard Directory Calculation
@@ -83,7 +94,7 @@ jobs:
             const targetDir = path.dirname(uniquePath);
             fs.mkdirSync(targetDir, { recursive: true });
 
-            // 4. Create the final Markdown content
+            // 4. Create the Markdown
             const dateStr = new Date().toISOString().split('T')[0];
             const tagsFormatted = inputTags.map(t => `"${t}"`).join(', ');
 
@@ -93,7 +104,7 @@ jobs:
             author_name: "${authorName}"
             author_email: "${authorEmail}"
             github_username: "${actor}"
-            category: "${category}"
+            category: "${rawCategory}"
             tags: [${tagsFormatted}]
             date: "${dateStr}"
             ---
