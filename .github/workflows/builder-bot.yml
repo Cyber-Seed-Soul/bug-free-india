@@ -113,7 +113,7 @@ jobs:
             const actor = issue.user.login;
             const shard = actor.substring(0, 1).toLowerCase();
             const safeSlug = slug.replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase(); 
-            const branchName = `workspace/${actor}/${safeSlug}`;
+            const branchName = `workspace/${actor}/${safeSlug}-${issue.number}`;
             const uniquePath = `authors/${shard}/${actor}/${safeSlug}/index.md`;
             
             fs.mkdirSync(path.dirname(uniquePath), { recursive: true });
