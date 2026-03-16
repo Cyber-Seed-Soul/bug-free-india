@@ -3,7 +3,7 @@ name: "IssueOps Workspace Builder"
 on:
   issues:
     types: [opened, edited]
-  workflow_dispatch: # THE OVERRIDE: Allows manual triggering for debugging!
+  workflow_dispatch:
     inputs:
       issue_number:
         description: 'Issue Number to process manually (e.g., 8)'
@@ -39,7 +39,6 @@ jobs:
             
             let issue;
             
-            // Handle Manual Workflow Dispatch vs Auto Issue Trigger
             if (context.eventName === 'workflow_dispatch') {
                console.log(`⚠️ Manual run detected for issue #${context.payload.inputs.issue_number}`);
                try {
@@ -66,7 +65,6 @@ jobs:
             console.log(`-> Triggered by user: ${issue.user.login}`);
 
             const body = issue.body || "";
-            console.log(`-> Raw Issue Body Length: ${body.length} characters`);
 
             // 1. Title Check
             if (!issue.title || !issue.title.includes('[Workspace]')) {
@@ -171,14 +169,14 @@ jobs:
             fs.writeFileSync(uniquePath, content.replace(/^\s+/gm, ''));
             console.log(`   -> Created file: ${uniquePath}`);
 
-            // 5. Git Operations
-            const exec = require('child_process').execSync;
-            exec('git config user.name "Cyber Seed Soul Bot"');
-            exec('git config user.email "bot@cyberseedsoul.in"');
-            exec(`git checkout -b ${branchName}`);
-            exec(`git add ${uniquePath}`);
-            exec(`git commit -m "feat: auto-created workspace for ${actor}: ${slug}"`);
-            exec(`git push origin ${branchName}`);
+            // 5. Git Operations (FIXED VARIABLE NAME)
+            const runCmd = require('child_process').execSync;
+            runCmd('git config user.name "Cyber Seed Soul Bot"');
+            runCmd('git config user.email "bot@cyberseedsoul.in"');
+            runCmd(`git checkout -b ${branchName}`);
+            runCmd(`git add ${uniquePath}`);
+            runCmd(`git commit -m "feat: auto-created workspace for ${actor}: ${slug}"`);
+            runCmd(`git push origin ${branchName}`);
             console.log(`   -> Pushed to branch: ${branchName}`);
 
             // 6. Magic Link
