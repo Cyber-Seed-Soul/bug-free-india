@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       issue_number:
-        description: 'Issue Number to process manually (e.g., 8)'
+        description: 'Issue Number to process manually'
         required: true
 
 permissions:
@@ -37,42 +37,22 @@ jobs:
             const fs = require('fs');
             const path = require('path');
             
-            let issue;
-            
-            if (context.eventName === 'workflow_dispatch') {
-               console.log(`⚠️ Manual run detected for issue #${context.payload.inputs.issue_number}`);
-               try {
-                   const response = await github.rest.issues.get({
-                      owner: context.repo.owner,
-                      repo: context.repo.repo,
-                      issue_number: parseInt(context.payload.inputs.issue_number)
-                   });
-                   issue = response.data;
-               } catch (e) {
-                   console.log(`❌ ERROR: Could not find Issue #${context.payload.inputs.issue_number}.`);
-                   return;
-               }
-            } else {
-               issue = context.payload.issue;
-            }
+            let issue = context.eventName === 'workflow_dispatch' ? 
+               (await github.rest.issues.get({ owner: context.repo.owner, repo: context.repo.repo, issue_number: parseInt(context.payload.inputs.issue_number) })).data : 
+               context.payload.issue;
 
-            if (!issue) {
-              console.log("❌ ERROR: No issue payload found.");
-              return;
-            }
-
-            console.log(`-> Processing Issue #${issue.number}: "${issue.title}"`);
-            console.log(`-> Triggered by user: ${issue.user.login}`);
+            if (!issue) return console.log("❌ ERROR: No issue payload found.");
 
             const body = issue.body || "";
 
-            // 1. Title Check
-            if (!issue.title || !issue.title.includes('[Workspace]')) {
-              console.log("❌ ABORT: Title does not contain '[Workspace]'. This is not a workspace request.");
+            // 1. THE BULLETPROOF TRIGGER
+            // We only check if the body contains the form questions. We ignore the title completely!
+            if (!body.includes('### Your Public Display Name')) {
+              console.log("❌ ABORT: Not a workspace request form. Going back to sleep.");
               return;
             }
 
-            console.log("✅ Valid Workspace Title detected. Extracting form fields...");
+            console.log(`-> Processing Workspace Request #${issue.number} by ${issue.user.login}`);
 
             // 2. Extraction Logic
             const extract = (label) => {
@@ -80,7 +60,6 @@ jobs:
               const match = body.match(regex);
               let val = match ? match[1].trim() : null;
               if (val === "_No response_") val = ""; 
-              console.log(`   -> Extracted [${label}]: '${val}'`);
               return val;
             };
 
@@ -90,52 +69,56 @@ jobs:
             const rawCategory = extract("Primary Category");
             const rawTags = extract("Tags \\(Comma Separated\\)");
 
-            if (!authorName || !slug || !rawCategory || !rawTags) {
-              console.log("❌ ABORT: Missing required fields in the markdown.");
-              await github.rest.issues.createComment({ 
-                ...context.repo, 
-                issue_number: issue.number, 
-                body: `⚠️ **System Error:** Missing required fields. The bot could not parse the markdown form.` 
-              });
-              return;
+            // 3. Collect ALL Errors for Feedback
+            let errors = [];
+
+            if (!authorName) errors.push("Missing **Public Display Name**.");
+            if (!slug) errors.push("Missing **Article URL Slug**.");
+            if (!rawCategory) errors.push("Missing **Primary Category**.");
+            if (!rawTags) errors.push("Missing **Tags**.");
+
+            // Validate Category
+            if (rawCategory) {
+              try {
+                 const catJson = JSON.parse(fs.readFileSync('categories.json', 'utf8'));
+                 const validCats = Array.isArray(catJson) ? catJson : Object.keys(catJson);
+                 if (validCats.length > 0 && !validCats.includes(rawCategory)) {
+                   errors.push(`Invalid Category: \`${rawCategory}\`. Options: ${validCats.join(', ')}`);
+                 }
+              } catch (e) { console.log("Warning: categories.json missing"); }
             }
 
-            // 3. JSON Validation
-            let errors = [];
-            console.log("🛠️ Validating against JSON databases...");
-
-            try {
-               const catJson = JSON.parse(fs.readFileSync('categories.json', 'utf8'));
-               const validCats = Array.isArray(catJson) ? catJson : Object.keys(catJson);
-               if (validCats.length > 0 && !validCats.includes(rawCategory)) {
-                 console.log(`   ❌ Invalid Category detected: ${rawCategory}`);
-                 errors.push(`Invalid Category: \`${rawCategory}\`. Valid options include: ${validCats.slice(0,5).join(', ')}...`);
-               } else {
-                 console.log(`   ✅ Category valid.`);
-               }
-            } catch (e) { console.log("   ⚠️ Warning: categories.json missing or invalid", e.message); }
-
-            const inputTags = rawTags.split(',').map(t => t.trim()).filter(t => t);
-            try {
-               const tagsJson = JSON.parse(fs.readFileSync('tags.json', 'utf8'));
-               const validTagsList = Array.isArray(tagsJson) ? tagsJson : Object.keys(tagsJson);
-               if (validTagsList.length > 0) {
-                 const invalidTags = inputTags.filter(t => !validTagsList.includes(t));
-                 if (invalidTags.length > 0) {
-                   console.log(`   ❌ Invalid Tags detected: ${invalidTags.join(', ')}`);
-                   errors.push(`Invalid Tags: \`${invalidTags.join(', ')}\`. Valid options include: ${validTagsList.slice(0,5).join(', ')}...`);
-                 } else {
-                   console.log(`   ✅ Tags valid.`);
+            // Validate Tags
+            let inputTags = [];
+            if (rawTags) {
+              inputTags = rawTags.split(',').map(t => t.trim()).filter(t => t);
+              try {
+                 const tagsJson = JSON.parse(fs.readFileSync('tags.json', 'utf8'));
+                 const validTagsList = Array.isArray(tagsJson) ? tagsJson : Object.keys(tagsJson);
+                 if (validTagsList.length > 0) {
+                   const invalidTags = inputTags.filter(t => !validTagsList.includes(t));
+                   if (invalidTags.length > 0) {
+                     errors.push(`Invalid Tags: \`${invalidTags.join(', ')}\`. Valid tags: ${validTagsList.join(', ')}`);
+                   }
                  }
-               }
-            } catch (e) { console.log("   ⚠️ Warning: tags.json missing or invalid", e.message); }
+              } catch (e) { console.log("Warning: tags.json missing"); }
+            }
 
+            // 🛑 HALT, FEEDBACK, AND AUTO-CLOSE IF VALIDATION FAILS
             if (errors.length > 0) {
-                 console.log("❌ ABORT: Validation failed. Leaving comment on issue...");
+                 console.log("❌ Validation failed. Leaving feedback and closing issue.");
+                 
                  await github.rest.issues.createComment({
                    ...context.repo,
                    issue_number: issue.number,
-                   body: `⚠️ **Validation Failed!**\n\n- ${errors.join('\n- ')}\n\n**Action Required:** Please close this issue and open a new one with correct values from the database.`
+                   body: `⚠️ **Workspace Request Denied**\n\nHi @${issue.user.login}, we couldn't create your workspace because of the following errors:\n\n- ${errors.join('\n- ')}\n\n**Next Steps:** This request has been automatically closed to keep the queue clean. Please open a new request with the corrected information.`
+                 });
+
+                 await github.rest.issues.update({
+                   ...context.repo,
+                   issue_number: issue.number,
+                   state: 'closed',
+                   state_reason: 'not_planned'
                  });
                  return; 
             }
@@ -153,7 +136,7 @@ jobs:
 
             const dateStr = new Date().toISOString().split('T')[0];
             const tagsFormatted = inputTags.map(t => `"${t}"`).join(', ');
-            const cleanTitle = issue.title.replace(/\[Workspace\]:\s*/i, '').trim();
+            const cleanTitle = issue.title.replace(/\[Workspace\]:\s*/i, '').trim() || slug;
 
             const content = `---
             title: "${cleanTitle}"
@@ -167,9 +150,8 @@ jobs:
             ---\n\n# ${cleanTitle}\n\nWrite your content here. Add an image by dragging it into your file tree on the left and linking it like this: ![desc](./images/your-image.jpg)\n`;
 
             fs.writeFileSync(uniquePath, content.replace(/^\s+/gm, ''));
-            console.log(`   -> Created file: ${uniquePath}`);
-
-            // 5. Git Operations (FIXED VARIABLE NAME)
+            
+            // 5. Git Operations
             const runCmd = require('child_process').execSync;
             runCmd('git config user.name "Cyber Seed Soul Bot"');
             runCmd('git config user.email "bot@cyberseedsoul.in"');
@@ -177,16 +159,14 @@ jobs:
             runCmd(`git add ${uniquePath}`);
             runCmd(`git commit -m "feat: auto-created workspace for ${actor}: ${slug}"`);
             runCmd(`git push origin ${branchName}`);
-            console.log(`   -> Pushed to branch: ${branchName}`);
 
-            // 6. Magic Link
+            // 6. Magic Link & Auto-Close Success
             const magicLink = `https://github.dev/${context.repo.owner}/${context.repo.repo}/blob/${branchName}/${uniquePath}`;
             
             await github.rest.issues.createComment({
               ...context.repo,
               issue_number: issue.number,
-              body: `✅ **Workspace Ready!**\n\nClick this magic link to write your article directly in your browser. You can drag and drop images into the file tree.\n\n🔗 [Start Writing Here](${magicLink})\n\n*(Note: When you are finished, commit your changes in the browser to automatically open a Pull Request!)*`
+              body: `✅ **Workspace Ready!**\n\nHi @${actor}, your workspace is built. Click this magic link to write your article directly in your browser. You can drag and drop images into the file tree.\n\n🔗 [Start Writing Here](${magicLink})\n\n*(Note: When you are finished, commit your changes in the browser to automatically open a Pull Request!)*`
             });
 
             await github.rest.issues.update({ ...context.repo, issue_number: issue.number, state: 'closed' });
-            console.log("✅ PIPELINE COMPLETE.");
