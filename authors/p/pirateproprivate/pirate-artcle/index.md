@@ -13,4 +13,5 @@ description: "An insightful article written by Sam."
 ---
 # Pirate Seconds
 Write your content here. 
+Trying to do some things
 **To add an image, simply drag and drop it from your computer directly into this text box!**
