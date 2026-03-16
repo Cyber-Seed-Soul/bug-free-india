@@ -22,7 +22,8 @@ body:
   - type: input
     id: author_email
     attributes:
-      label: Your Public Contact Email
+      label: Your Public Contact Email (Optional)
+      description: Leave this blank if you do not want your email public.
       placeholder: sam@cyberseedsoul.in
     validations:
       required: false
