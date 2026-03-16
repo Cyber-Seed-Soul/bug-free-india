@@ -9,7 +9,6 @@ tags: ["DevOps", "Architecture"]
 # We Have Reached the Finish Line
 
 This article proves that the multi-tenant architecture is successfully extracting data, mapping the relations, and uploading images!
-
 updating......again......
 
 ![Inline Image Test](./images/pexels-pixabay-276267.jpg)

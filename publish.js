@@ -31,7 +31,6 @@ async function handleImage(localPath, authorName, articleSlug) {
     const ext = path.extname(localPath).toLowerCase();
     const fileBuffer = fs.readFileSync(localPath);
     
-    // Hash for intelligent cache matching
     const hashSum = crypto.createHash('md5');
     hashSum.update(fileBuffer);
     const fileHash = hashSum.digest('hex').substring(0, 10);
@@ -55,14 +54,20 @@ async function handleImage(localPath, authorName, articleSlug) {
         if (ext === '.webp') mimeType = 'image/webp';
         if (ext === '.gif') mimeType = 'image/gif';
 
+        // STRICT NATIVE FIX: Forcing explicit Blob properties to prevent 404 payload stripping
         const blob = new Blob([fileBuffer], { type: mimeType });
-        const form = new FormData(); // Node 20+ Native FormData
+        const form = new FormData(); 
         form.append('files', blob, uniqueFileName);
 
         const options = {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${STRAPI_TOKEN}` }, 
-            body: form // Native fetch calculates multipart boundaries automatically
+            headers: { 
+                'Authorization': `Bearer ${STRAPI_TOKEN}`,
+                // Do NOT set Content-Type; Native fetch must generate the boundary string
+            }, 
+            // Setting explicitly to node's underlying stream engine
+            body: form,
+            duplex: 'half' 
         };
 
         const res = await fetch(`${STRAPI_URL}/api/upload`, options);
