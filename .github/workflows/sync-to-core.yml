@@ -33,6 +33,11 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            const commitMsg = context.payload.head_commit ? context.payload.head_commit.message : "";
+            if (commitMsg.includes("auto-created draft template")) {
+                console.log("🛑 Builder Bot template push detected. Halting sync. Waiting for author to submit PR.");
+                return;
+            }
             const fs = require('fs');
             const path = require('path');
             const { execSync } = require('child_process');
