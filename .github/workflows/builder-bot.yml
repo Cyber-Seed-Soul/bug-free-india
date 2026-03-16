@@ -90,7 +90,7 @@ jobs:
             issue_number: ${issue.number}
             category: "${rawCategory}"
             tags: [${tagsFormatted}]
-            pubDatetime: "${dateStr}"
+            pubDatetime: ${dateStr}
             draft: true
             description: "An insightful article written by ${authorName}."
             ---\n\n# ${cleanTitle}\n\nWrite your content here. \n\n**To add an image, simply drag and drop it from your computer directly into this text box!**\n`;
