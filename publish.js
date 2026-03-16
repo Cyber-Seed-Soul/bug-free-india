@@ -1,9 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const matter = require('gray-matter');
-const FormData = require('form-data');
 const crypto = require('crypto');
 
+// PERMANENT ARCHITECTURE: No external form-data package used. 
 const STRAPI_URL = (process.env.STRAPI_URL || '').replace(/\/$/, '');
 const STRAPI_TOKEN = process.env.STRAPI_WRITE_TOKEN;
 
@@ -26,64 +26,53 @@ async function strapiRequest(endpoint, method = 'GET', body = null) {
 
 async function handleImage(localPath, authorName, articleSlug) {
     console.log(`   -> [IMAGE] Processing: ${localPath}`);
-    
-    if (!fs.existsSync(localPath)) {
-        console.log(`   -> ⚠️ [WARNING] Image missing on disk. Proceeding without it.`);
-        return null; 
-    }
+    if (!fs.existsSync(localPath)) return null; 
 
     const ext = path.extname(localPath).toLowerCase();
     const fileBuffer = fs.readFileSync(localPath);
-
+    
+    // Hash for intelligent cache matching
     const hashSum = crypto.createHash('md5');
     hashSum.update(fileBuffer);
     const fileHash = hashSum.digest('hex').substring(0, 10);
     const uniqueFileName = `${authorName}_${articleSlug}_${fileHash}${ext}`;
 
-    // 1. SMART CACHE CHECK (DECOUPLED)
     console.log(`   -> [IMAGE] Checking CMS cache...`);
     try {
         const searchRes = await strapiRequest(`upload/files?filters[name][$eq]=${encodeURIComponent(uniqueFileName)}`);
         if (Array.isArray(searchRes) && searchRes.length > 0) {
-            console.log(`   -> [IMAGE] ✅ Unchanged image found in CMS cache!`);
+            console.log(`   -> [IMAGE] ✅ Found in CMS cache! Skipping upload.`);
             return `${STRAPI_URL}${searchRes[0].url}`;
         }
     } catch (cacheError) {
-        // We no longer crash here. We just warn and proceed.
-        console.log(`   -> ⚠️ [WARNING] Cache read denied (403). Bypassing cache optimization.`);
+        console.log(`   -> ⚠️ [WARNING] Cache read denied. Bypassing check.`);
     }
 
-    // 2. SECURE UPLOAD LOGIC (DECOUPLED)
-    console.log(`   -> [IMAGE] Initiating upload to server...`);
+    console.log(`   -> [IMAGE] Initiating Native Web upload...`);
     try {
-        const form = new FormData();
-        form.append('files', fileBuffer, { filename: uniqueFileName });
+        let mimeType = 'image/jpeg';
+        if (ext === '.png') mimeType = 'image/png';
+        if (ext === '.webp') mimeType = 'image/webp';
+        if (ext === '.gif') mimeType = 'image/gif';
 
-        const payloadBuffer = await new Promise((resolve, reject) => {
-            const chunks = [];
-            form.on('data', chunk => chunks.push(chunk));
-            form.on('end', () => resolve(Buffer.concat(chunks)));
-            form.on('error', reject);
-        });
+        const blob = new Blob([fileBuffer], { type: mimeType });
+        const form = new FormData(); // Node 20+ Native FormData
+        form.append('files', blob, uniqueFileName);
 
         const options = {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${STRAPI_TOKEN}`,
-                ...form.getHeaders()
-            },
-            body: payloadBuffer
+            headers: { 'Authorization': `Bearer ${STRAPI_TOKEN}` }, 
+            body: form // Native fetch calculates multipart boundaries automatically
         };
 
         const res = await fetch(`${STRAPI_URL}/api/upload`, options);
-        if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+        if (!res.ok) throw new Error(`Upload failed: ${res.status} - ${await res.text()}`);
         
         const data = await res.json();
         console.log(`   -> [IMAGE] ✅ Uploaded successfully!`);
         return `${STRAPI_URL}${data[0].url}`; 
     } catch (uploadError) {
-        // If the upload totally fails, we return null so the pipeline survives and the text publishes.
-        console.log(`   -> ❌ [ERROR] Image upload failed entirely. Skipping image to save article text.`);
+        console.log(`   -> ❌ [ERROR] Image upload failed: ${uploadError.message}. Skipping image to save text.`);
         return null; 
     }
 }
@@ -92,7 +81,7 @@ async function getOrCreateTerm(endpoint, termName, map) {
     if (!termName) return null;
     if (map[termName]) return map[termName]; 
     
-    console.log(`   -> [TAXONOMY] Auto-creating missing ${endpoint}: ${termName}...`);
+    console.log(`   -> [TAXONOMY] Auto-creating: ${termName}...`);
     try {
         const payload = { data: { Name: termName, publishedAt: new Date().toISOString() } };
         const res = await strapiRequest(endpoint, 'POST', payload);
@@ -100,16 +89,15 @@ async function getOrCreateTerm(endpoint, termName, map) {
         map[termName] = newId;
         return newId;
     } catch (e) {
-        console.log(`   -> ❌ [ERROR] Could not create taxonomy. Skipping relation.`);
         return null;
     }
 }
 
 async function runPublisher() {
-    console.log("🚀 STARTING V8 'INDESTRUCTIBLE' PUBLISHER ENGINE\n");
+    console.log("🚀 STARTING FINAL PUBLISHER ENGINE\n");
 
     try {
-        console.log("🛠️ Mapping existing Taxonomies...");
+        console.log("🛠️ Mapping Taxonomies...");
         const categoryData = await strapiRequest('categories');
         const tagData = await strapiRequest('tags');
         const categoryMap = {};
@@ -140,12 +128,17 @@ async function runPublisher() {
                     const contentRaw = fs.readFileSync(mdPath, 'utf8');
                     const parsed = matter(contentRaw);
                     
-                    const slug = parsed.data.slug || articleFolder.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+                    // The frontmatter is required for this to work
+                    if (!parsed.data.slug) {
+                        console.log(`   -> ⚠️ [SKIPPED] No frontmatter/slug found.`);
+                        continue;
+                    }
+
+                    const slug = parsed.data.slug;
                     const title = parsed.data.title || "Untitled Article";
                     const category = parsed.data.category || "General";
                     const tags = parsed.data.tags || [];
 
-                    // IMAGE SWAPPER
                     let updatedContent = parsed.content;
                     const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g; 
                     const matches = [...updatedContent.matchAll(imageRegex)];
@@ -165,7 +158,6 @@ async function runPublisher() {
                         }
                     }
 
-                    // RELATION MAPPING
                     const categoryId = await getOrCreateTerm('categories', category, categoryMap);
                     const tagIds = [];
                     for (const t of tags) {
@@ -173,7 +165,6 @@ async function runPublisher() {
                         if (tId) tagIds.push(tId);
                     }
 
-                    // BUILD THE PAYLOAD
                     const payload = {
                         data: {
                             Title: title,
@@ -184,31 +175,26 @@ async function runPublisher() {
                         }
                     };
                     
-                    // CORE UPSERT LOGIC (The API calls you asked for)
+                    console.log(`   -> [DATABASE] Executing Upsert...`);
                     const search = await strapiRequest(`articles?filters[slug][$eq]=${encodeURIComponent(slug)}`);
                     
                     if (search.data && search.data.length > 0) {
-                        // UPDATE PATH
                         const targetId = search.data[0].documentId || search.data[0].id; 
-                        console.log(`   -> Article exists. Executing PUT to update...`);
                         await strapiRequest(`articles/${targetId}`, 'PUT', payload);
                         console.log(`✅ SUCCESS: Article Updated!`);
                     } else {
-                        // CREATE PATH
-                        console.log(`   -> Article not found. Executing POST to create...`);
                         payload.data.publishedAt = new Date().toISOString();
                         await strapiRequest('articles', 'POST', payload);
                         console.log(`✅ SUCCESS: Article Created!`);
                     }
 
                 } catch (articleError) {
-                    // This only triggers if the text formatting is completely destroyed or DB is down
                     console.error(`❌ FAILED on ${articleFolder}:`, articleError.message);
                 }
             }
         }
     } catch (globalError) {
-        console.error(`🚨 SYSTEM DOWN: Cannot reach Strapi. Check Token/URL.`, globalError.message);
+        console.error(`🚨 SYSTEM DOWN: Cannot reach Strapi.`, globalError.message);
         process.exit(1);
     }
 
