@@ -9,7 +9,7 @@ body:
     attributes:
       value: |
         ## Welcome, Author! 
-        Fill out this form, and our automated bot will build your isolated writing workspace in less than 10 seconds.
+        Fill out this form. Ignore the buttons at the bottom (Assignee, Labels, etc.) and just click the green **Create** button.
   
   - type: input
     id: author_name
@@ -42,12 +42,20 @@ body:
     id: category
     attributes:
       label: Primary Category
-      description: Select the category that best fits your article.
       options:
         - Platform Engineering
         - Data Science
         - Cyber Security
         - Open Source
         - Motivation
+    validations:
+      required: true
+
+  - type: input
+    id: tags
+    attributes:
+      label: Tags (Comma Separated)
+      description: You must provide at least one valid tag (e.g., DevOps, Architecture).
+      placeholder: DevOps, Open Source
     validations:
       required: true

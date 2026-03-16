@@ -7,7 +7,6 @@ on:
 permissions:
   contents: write
   issues: write
-  pull-requests: write
 
 jobs:
   build-workspace:
@@ -22,9 +21,6 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install gray-matter Parser
-        run: npm install gray-matter 
-
       - name: Run Builder Script
         uses: actions/github-script@v7
         with:
@@ -33,93 +29,97 @@ jobs:
             const fs = require('fs');
             const path = require('path');
             
-            // 1. Get Issue Data and Actor
             const issue = github.event.issue;
-            const actor = github.actor; // The crucial GitHub Username
+            const actor = github.actor; 
             console.log(`🚀 Starting workspace build for ${actor}...`);
 
-            // 2. Parse the Issue Form Body
-            // We need custom parsing to extract field IDs from the GitHub Issue Form YAML format
+            // 1. Parse the Issue Form
             const body = issue.body;
-            const authorNameMatch = body.match(/### Your Public Display Name\s+([\s\S]+?)\s+###/);
-            const authorEmailMatch = body.match(/### Your Public Contact Email\s+([\s\S]+?)\s+###/);
-            const articleSlugMatch = body.match(/### Article URL Slug\s+([\s\S]+?)\s+###/);
-            const categoryMatch = body.match(/### Primary Category\s+([\s\S]+?)\s*$/);
+            const extract = (label) => {
+              const regex = new RegExp(`### ${label}\\s+([\\s\\S]+?)(?:\\n### |$)`);
+              const match = body.match(regex);
+              return match ? match[1].trim() : null;
+            };
 
-            if (!authorNameMatch || !articleSlugMatch || !categoryMatch) {
-              console.log("⚠️ Failed to parse form. Ensure required fields are filled.");
+            const authorName = extract("Your Public Display Name");
+            const authorEmail = extract("Your Public Contact Email") || "";
+            const slug = extract("Article URL Slug");
+            const category = extract("Primary Category");
+            const rawTags = extract("Tags \\(Comma Separated\\)");
+
+            if (!authorName || !slug || !category || !rawTags) {
+              await github.rest.issues.createComment({ ...github.repo, issue_number: issue.number, body: `⚠️ **Error:** Missing required fields.` });
               return;
             }
 
-            const authorName = authorNameMatch[1].trim();
-            const authorEmail = authorEmailMatch ? authorEmailMatch[1].trim() : '';
-            const rawSlug = articleSlugMatch[1].trim();
-            const category = categoryMatch[1].trim();
-
-            // Validate Slug Syntax (lowercase letters and hyphens only)
-            const slugRegex = /^[a-z0-9-]+$/;
-            if (!slugRegex.test(rawSlug)) {
-              console.log(`⚠️ Invalid slug format: ${rawSlug}`);
-              await github.rest.issues.createComment({
-                ...github.repo,
-                issue_number: issue.number,
-                body: `⚠️ **Invalid Slug:** '${rawSlug}'. Please use only lowercase letters and hyphens (e.g., how-to-code).`
-              });
-              return;
+            // 2. Validate Tags against tags.json
+            let validTagsList = [];
+            try {
+               const tagsJson = JSON.parse(fs.readFileSync('tags.json', 'utf8'));
+               // Assuming tags.json is an array of strings or objects. Adjust as needed.
+               validTagsList = Array.isArray(tagsJson) ? tagsJson : Object.keys(tagsJson);
+            } catch (e) {
+               console.log("No tags.json found or invalid format. Skipping strict tag validation.");
             }
-            const slug = rawSlug;
 
-            // 3. Shard Directory and unique path calculation
+            const inputTags = rawTags.split(',').map(t => t.trim()).filter(t => t);
+            
+            if (validTagsList.length > 0) {
+               const invalidTags = inputTags.filter(t => !validTagsList.includes(t));
+               if (invalidTags.length > 0) {
+                 await github.rest.issues.createComment({
+                   ...github.repo,
+                   issue_number: issue.number,
+                   body: `⚠️ **Validation Failed:** The following tags are invalid: \`${invalidTags.join(', ')}\`.\n\nPlease reply with valid tags from the database.`
+                 });
+                 return; // Halt creation
+               }
+            }
+
+            // 3. Shard Directory Calculation
             const shard = actor.substring(0, 1).toLowerCase();
             const uniquePath = `authors/${shard}/${actor}/${slug}/index.md`;
-            console.log(`📄 Target file path: ${uniquePath}`);
-
-            // Ensure directory exists synchronously
+            
             const targetDir = path.dirname(uniquePath);
             fs.mkdirSync(targetDir, { recursive: true });
 
-            // 4. Create the final Markdown content with injected, validated frontmatter
+            // 4. Create the final Markdown content
             const dateStr = new Date().toISOString().split('T')[0];
+            const tagsFormatted = inputTags.map(t => `"${t}"`).join(', ');
+
             const content = `---
-            title: "${articleName}"
+            title: "Replace with Article Title"
             slug: "${slug}"
             author_name: "${authorName}"
             author_email: "${authorEmail}"
-            github_username: "${actor}"  # NATIVE IDENTITY BINDING (For Validation Bot)
+            github_username: "${actor}"
             category: "${category}"
-            tags: ["Open Source", "Cyber Seed Soul"]
+            tags: [${tagsFormatted}]
             date: "${dateStr}"
             ---
             
-            # ${articleName}
+            # Your Article Title
             
-            Write your content here. Add an image like this: ![desc](./images/your-image.jpg)
+            Write your content here. Add an image by dragging it into your folder and linking it like this: ![desc](./images/your-image.jpg)
             `;
 
-            fs.writeFileSync(uniquePath, content);
-            console.log("✅ index.md created successfully.");
+            fs.writeFileSync(uniquePath, content.replace(/^\s+/gm, ''));
 
-            // 5. Commit and Push back to main
+            // 5. Commit and Push
             const exec = require('child_process').execSync;
-            exec('git config user.name "Cyber Seed Soul Bot"');
-            exec('git config user.email "bot@cyberseedsoul.in"');
+            exec('git config user.name "github-actions[bot]"');
+            exec('git config user.email "github-actions[bot]@users.noreply.github.com"');
             exec(`git add ${uniquePath}`);
             exec(`git commit -m "feat: auto-created workspace for ${actor}: ${slug}"`);
             exec('git push origin main');
 
-            console.log(`✅ File committed and pushed.`);
-
-            // 6. Magic Link Generation (Points directly to Browser-Code editor on the file)
-            const magicLink = `https://github.dev/${github.repository}/blob/main/${uniquePath}`;
+            // 6. Magic Link
+            const magicLink = `https://github.dev/${github.context.repo.owner}/${github.context.repo.repo}/blob/main/${uniquePath}`;
             
             await github.rest.issues.createComment({
               ...github.repo,
               issue_number: issue.number,
-              body: `✅ **Workspace Ready!**\\n\\nClick this magic link to write your article in your browser. Images can be dragged into your folder tree:\\n\\n🔗 [Start Writing: ${articleName}](${magicLink})`
+              body: `✅ **Workspace Ready!**\n\nClick this magic link to write your article directly in your browser. You can drag and drop images into the file tree.\n\n🔗 [Start Writing Here](${magicLink})`
             });
 
-            await github.rest.issues.update({
-              ...github.repo,
-              issue_number: issue.number,
-              state: 'closed'
-            });
+            await github.rest.issues.update({ ...github.repo, issue_number: issue.number, state: 'closed' });
