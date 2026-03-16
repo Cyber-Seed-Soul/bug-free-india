@@ -11,7 +11,6 @@ permissions:
 jobs:
   build-workspace:
     runs-on: ubuntu-latest
-    if: contains(github.event.issue.labels.*.name, 'workspace-request')
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -21,7 +20,7 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Run Builder Script
+      - name: Run Builder & Validator Script
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -31,10 +30,18 @@ jobs:
             
             const issue = github.event.issue;
             const actor = github.actor; 
-            console.log(`🚀 Starting workspace build for ${actor}...`);
+            const body = issue.body || "";
 
-            // 1. Parse the Issue Form
-            const body = issue.body;
+            // 1. THE BULLETPROOF TRIGGER
+            // Instead of checking labels, we check if the form text actually exists
+            if (!body.includes('### Your Public Display Name')) {
+              console.log("Not a workspace request form. Going back to sleep.");
+              return;
+            }
+
+            console.log(`🚀 Form detected! Starting build for ${actor}...`);
+
+            // 2. Parse the Issue Form
             const extract = (label) => {
               const regex = new RegExp(`### ${label}\\s+([\\s\\S]+?)(?:\\n### |$)`);
               const match = body.match(regex);
@@ -43,16 +50,17 @@ jobs:
 
             const authorName = extract("Your Public Display Name");
             const authorEmail = extract("Your Public Contact Email") || "";
+            // Handle edge cases where users might accidentally delete the [Workspace]: prefix in the title
             const slug = extract("Article URL Slug");
             const rawCategory = extract("Primary Category");
             const rawTags = extract("Tags \\(Comma Separated\\)");
 
             if (!authorName || !slug || !rawCategory || !rawTags) {
-              await github.rest.issues.createComment({ ...github.repo, issue_number: issue.number, body: `⚠️ **Error:** Missing required fields.` });
+              await github.rest.issues.createComment({ ...github.repo, issue_number: issue.number, body: `⚠️ **Error:** Missing required fields. Please fill out the form completely.` });
               return;
             }
 
-            // 2. JSON VALIDATION (Categories & Tags)
+            // 3. JSON VALIDATION (Categories & Tags)
             let errors = [];
 
             // Validate Category
@@ -77,29 +85,29 @@ jobs:
                }
             } catch (e) { console.log("Skipping tag validation (tags.json missing or invalid)"); }
 
-            // Halt if validation fails
+            // 🛑 HALT IF VALIDATION FAILS
             if (errors.length > 0) {
                  await github.rest.issues.createComment({
                    ...github.repo,
                    issue_number: issue.number,
-                   body: `⚠️ **Validation Failed:**\n- ${errors.join('\n- ')}\n\nPlease close this issue and submit a new one with exact values from the database.`
+                   body: `⚠️ **Validation Failed:**\n- ${errors.join('\n- ')}\n\nPlease close this issue and submit a new one with exact matching values from our database.`
                  });
-                 return; 
+                 return; // Stops the script before any folders are created
             }
 
-            // 3. Shard Directory Calculation
+            // 4. Shard Directory Calculation
             const shard = actor.substring(0, 1).toLowerCase();
             const uniquePath = `authors/${shard}/${actor}/${slug}/index.md`;
             
             const targetDir = path.dirname(uniquePath);
             fs.mkdirSync(targetDir, { recursive: true });
 
-            // 4. Create the Markdown
+            // 5. Create the Markdown
             const dateStr = new Date().toISOString().split('T')[0];
             const tagsFormatted = inputTags.map(t => `"${t}"`).join(', ');
 
             const content = `---
-            title: "Replace with Article Title"
+            title: "${issue.title.replace('[Workspace]: ', '').trim()}"
             slug: "${slug}"
             author_name: "${authorName}"
             author_email: "${authorEmail}"
@@ -109,22 +117,22 @@ jobs:
             date: "${dateStr}"
             ---
             
-            # Your Article Title
+            # Write Your Title Here
             
-            Write your content here. Add an image by dragging it into your folder and linking it like this: ![desc](./images/your-image.jpg)
+            Write your content here. Add an image by dragging it into your file tree and linking it like this: ![desc](./images/your-image.jpg)
             `;
 
             fs.writeFileSync(uniquePath, content.replace(/^\s+/gm, ''));
 
-            // 5. Commit and Push
+            // 6. Commit and Push
             const exec = require('child_process').execSync;
-            exec('git config user.name "github-actions[bot]"');
-            exec('git config user.email "github-actions[bot]@users.noreply.github.com"');
+            exec('git config user.name "Cyber Seed Soul Bot"');
+            exec('git config user.email "bot@cyberseedsoul.in"');
             exec(`git add ${uniquePath}`);
             exec(`git commit -m "feat: auto-created workspace for ${actor}: ${slug}"`);
             exec('git push origin main');
 
-            // 6. Magic Link
+            // 7. Magic Link
             const magicLink = `https://github.dev/${github.context.repo.owner}/${github.context.repo.repo}/blob/main/${uniquePath}`;
             
             await github.rest.issues.createComment({
