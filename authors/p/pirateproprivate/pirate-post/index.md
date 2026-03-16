@@ -1,17 +1,16 @@
 ---
-title: "Pirate Publish"
+title: "Pirate Article for pirates"
 slug: "pirate-post"
-author: "sam"
+author: "Pirate"
 author_email: ""
 github_username: "pirateproprivate"
-issue_number: 34
+issue_number: 39
 category: "Cybersecurity"
 tags: ["Privacy"]
 pubDatetime: "2026-03-16"
 draft: true
-description: "An insightful article written by sam."
+description: "An insightful article written by Pirate."
 ---
-# Pirate Publish
+# Pirate Article for pirates
 Write your content here. 
-updating these files is not showing up in the website automatically?
 **To add an image, simply drag and drop it from your computer directly into this text box!**
