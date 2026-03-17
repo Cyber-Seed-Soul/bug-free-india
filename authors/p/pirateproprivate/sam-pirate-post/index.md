@@ -8,7 +8,7 @@ issue_number: 37
 category: "Cybersecurity"
 tags: ["Security"]
 pubDatetime: "2026-03-16"
-draft: true
+draft: false
 description: "An insightful article written by Sam."
 ---
 # Trying to publish a pirate article

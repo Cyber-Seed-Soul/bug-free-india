@@ -8,7 +8,7 @@ issue_number: 32
 category: "Cybersecurity"
 tags: ["Privacy"]
 pubDatetime: "2026-03-16"
-draft: true
+draft: false
 description: "An insightful article written by Sam."
 ---
 # Pirate Seconds
