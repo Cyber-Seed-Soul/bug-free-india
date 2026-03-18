@@ -1,5 +1,5 @@
 ---
-title: "Pirate Seconds"
+title: "Indian Data Laws"
 slug: "pirate-artcle"
 author: "Sam"
 author_email: ""
