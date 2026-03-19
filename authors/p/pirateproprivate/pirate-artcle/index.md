@@ -21,7 +21,9 @@ description: "India Data Laws"
 
 4. If a company messes with your data, you don't need to run around government offices. You can easily file a complaint online through the new [Digital Data Protection Board](https://www.meity.gov.in/).
 
-whether you're coding in a college hostel or farming in the village or surviving in india or being a normal indian citizen living your life, you need to know these laws and question everything like Raghav Chadha in the indian assembly.  We alreday lost 100 billion dollars in cybercrime epidemic, on top of that indian govt is doing section 69 and SIM card bindings. Simple SMS OTPs can get easily hacked, you need to shift to using authenticator apps. You have to start actively questioning the content and the apps you consume. 
+<p style="text-align: justify;">
+whether you're coding in a college hostel or farming in the village or surviving in india or being a normal indian citizen living your life, you need to know these laws and question everything like Raghav Chadha in the indian assembly.  We alreday lost 100 billion dollars in cybercrime epidemic, on top of that indian govt is doing section 69 and SIM card bindings. Simple SMS OTPs can get easily hacked, you need to shift to using authenticator apps. You have to start actively questioning the content and the apps you consume.
+</p> 
 
 ### Useful Links
 [The DPDP Act, 2023](https://www.indiacode.nic.in/handle/123456789/22037)
