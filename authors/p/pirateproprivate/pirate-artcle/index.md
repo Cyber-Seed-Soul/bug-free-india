@@ -9,14 +9,30 @@ category: "Cybersecurity"
 tags: ["Privacy"]
 pubDatetime: "2026-03-16"
 draft: false
-description: "An insightful article written by Sam."
+description: "India Data Laws"
 ---
 # Indian Data Laws every Indian must know (DPDP Act, 2023)
 
-As an Indian, You can withdraw consent at any time. You have the absolute right to demand that any company show you, correct, or completely delete your personal details from their systems.
+1. As an Indian, You can withdraw consent at any time. You have the absolute right to demand that any company show you, correct, or completely delete your personal details from their systems.
 
-For non-compliance or failure to maintain reasonable security safeguards the fine is up to 250 crores for companies.
+2. For non-compliance or failure to maintain reasonable security safeguards the fine is up to 250 crores for companies.
 
-If the company doesn't notify us for our data violations and breaches, the penalty is additional and it is up to 200 crores.
+3. If the company doesn't notify us for our data violations and breaches, the penalty is additional and it is up to 200 crores.
 
-If a company messes with your data, you don't need to run around government offices. You can easily file a complaint online through the new Digital Data Protection Board.
+4. If a company messes with your data, you don't need to run around government offices. You can easily file a complaint online through the new [Digital Data Protection Board](https://www.meity.gov.in/).
+
+
+
+### Useful Links
+[The DPDP Act, 2023](https://www.indiacode.nic.in/handle/123456789/22037)
+
+[Indian Computer Emergency Response Team](https://www.cert-in.org.in/)
+
+[RBI Credit Cards and Debit Cards](https://rbi.org.in/scripts/NotificationUser.aspx?Mode=0&Id=13052#mainsection)
+
+
+
+
+
+
+
