@@ -1,5 +1,5 @@
 ---
-title: "Indian Data Laws"
+title: "Indian Data Laws every Indian must know"
 slug: "pirate-artcle"
 author: "Sam"
 author_email: ""
@@ -7,7 +7,7 @@ github_username: "pirateproprivate"
 issue_number: 32
 category: "Cybersecurity"
 tags: ["Privacy"]
-pubDatetime: "2026-03-16"
+pubDatetime: "2026-03-19"
 draft: false
 description: "India Data Laws"
 ---
@@ -21,7 +21,7 @@ description: "India Data Laws"
 
 4. If a company messes with your data, you don't need to run around government offices. You can easily file a complaint online through the new [Digital Data Protection Board](https://www.meity.gov.in/).
 
-
+whether you're coding in a college hostel or farming in the village or surviving in india or being a normal indian citizen living your life, you need to know these laws and question everything like Raghav Chadha in the indian assembly.  We alreday lost 100 billion dollars in cybercrime epidemic, on top of that indian govt is doing section 69 and SIM card bindings. Simple SMS OTPs can get easily hacked, you need to shift to using authenticator apps. You have to start actively questioning the content and the apps you consume. 
 
 ### Useful Links
 [The DPDP Act, 2023](https://www.indiacode.nic.in/handle/123456789/22037)
