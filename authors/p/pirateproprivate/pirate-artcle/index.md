@@ -9,7 +9,7 @@ category: "Cybersecurity"
 tags: ["Privacy"]
 pubDatetime: "2026-03-19"
 draft: false
-description: "India Data Laws"
+description: "India's Data Laws"
 ---
 # Indian Data Laws every Indian must know (DPDP Act, 2023)
 
@@ -22,7 +22,7 @@ description: "India Data Laws"
 4. If a company messes with your data, you don't need to run around government offices. You can easily file a complaint online through the new [Digital Data Protection Board](https://www.meity.gov.in/).
 
 <p style="text-align: justify;">
-whether you're coding in a college hostel or farming in the village or surviving in india or being a normal indian citizen living your life, you need to know these laws and question everything like Raghav Chadha in the indian assembly.  We alreday lost 100 billion dollars in cybercrime epidemic, on top of that indian govt is doing section 69 and SIM card bindings. Simple SMS OTPs can get easily hacked, you need to shift to using authenticator apps. You have to start actively questioning the content and the apps you consume.
+Whether you're coding in a college hostel, farming in the village, surviving in India, or being a normal indian citizen living your life, you need to know these laws and question everything like Raghav Chadha in the Indian Assembly.  We already lost 100 billion dollars in the cybercrime epidemic, on top of that, indian govt is doing Section 69 and SIM card bindings. Simple SMS OTPs can be easily hacked. You need to shift to using authenticator apps. You have to start actively questioning the content and the apps you consume.
 </p> 
 
 ### Useful Links
