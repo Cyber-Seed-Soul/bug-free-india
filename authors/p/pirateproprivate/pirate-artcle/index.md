@@ -1,5 +1,5 @@
 ---
-title: "Indian Data Laws every Indian must know"
+title: "India's Data Laws every Indian must know"
 slug: "pirate-artcle"
 author: "Sam"
 author_email: ""
@@ -22,7 +22,7 @@ description: "India's Data Laws"
 4. If a company messes with your data, you don't need to run around government offices. You can easily file a complaint online through the new [Digital Data Protection Board](https://www.meity.gov.in/).
 
 <p style="text-align: justify;">
-Whether you're coding in a college hostel, farming in the village, surviving in India, or being a normal indian citizen living your life, you need to know these laws and question everything like Raghav Chadha in the Indian Assembly.  We already lost 100 billion dollars in the cybercrime epidemic, on top of that, indian govt is doing Section 69 and SIM card bindings. Simple SMS OTPs can be easily hacked. You need to shift to using authenticator apps. You have to start actively questioning the content and the apps you consume.
+Whether you're coding in a college hostel, farming in the village, surviving in India, or being a normal indian citizen living your life, you need to know these laws and question everything like Raghav Chadha in the Indian Assembly.  We already lost 100 billion dollars in the cybercrime epidemic, on top of that, indian govt is doing Section 69 and SIM card bindings. Simple SMS OTPs can be easily hacked. You need to shift to using authenticator apps. You have to start actively questioning the content and the apps you consume. We did not study engineering and sales to put poison in our own food, to spy on ourselves. 
 </p> 
 
 ### Useful Links
