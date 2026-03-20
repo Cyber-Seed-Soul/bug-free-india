@@ -6,7 +6,7 @@ author_email: ""
 github_username: "pirateproprivate"
 issue_number: 39
 category: "Artificial Intelligence"
-tags: ["Deep Learning, Machine Learning, Natural Language Processing"]
+tags: ["Deep Learning", "Machine Learning", "Natural Language Processing"]
 pubDatetime: "2026-03-16"
 draft: false
 description: "Artificial Super Intelligence"
