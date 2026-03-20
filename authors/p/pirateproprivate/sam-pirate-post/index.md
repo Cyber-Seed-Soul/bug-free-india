@@ -7,20 +7,20 @@ github_username: "pirateproprivate"
 issue_number: 37
 category: "Education"
 tags: ["investing"]
-pubDatetime: "2026-03-16"
+pubDatetime: "2026-03-20"
 draft: false
 description: "A simple guide to fix indian govt websites"
 ---
-# Why Indian Govt Websites Still Suck In The Age Of AI ?
+# The Bureaucratic Mindset of Indian Govt Websites
 
 <p style="text-align: justify">
 There is a famous concept in software engineering called Conway’s Law, which states that organizations design systems that mirror their own internal communication structures. If a physical Indian government office is chaotic, requires you to visit five different windows, get three different stamps, and look at massive portraits of politicians on the wall, the website will be built the exact same way.
 </p>
 
 <p style="text-align: justify">
-L1 Tender - Lowest Bidder procurement system.(Tenders are given to Thugs, Gangsters, Rowdy boys in india.)
+L1 Tender - Lowest Bidder procurement system. (Tenders are given to Thugs, Gangsters, Rowdy boys in India.)
 
-For majority of the static sites, we don't even need the L1 Tender, Website hosting is free literally. Github pages is free and open source aand they also provide support for all types of orgnizations, icluding govt organizations. If the govt don't want to go in that route, they can create their own homelab. Litteally teenagers are doing homelabbing now a days leaving bigtech.
+For the majority of the static sites, we don't even need the L1 Tender. Website hosting is free, literally. GitHub Pages is free and open source, and they also provide support for all types of organizations, including government organizations. If the government doesn't want to go down that route, it can create its own homelab. Literally, teenagers are doing homelabbing nowadays, leaving big tech.
 </p>
 
 ## How to Fix
