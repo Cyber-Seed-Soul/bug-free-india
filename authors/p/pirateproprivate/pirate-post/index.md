@@ -9,6 +9,6 @@ category: "Artificial Intelligence"
 tags: ["Deep Learning, Machine Learning, Natural Language Processing"]
 pubDatetime: "2026-03-16"
 draft: false
-description: "Artificial Intelligence, Artificial General Intelligence, Artificial Super Intelligence"
+description: "Artificial Super Intelligence"
 ---
 # How India Should Think About AI ?
