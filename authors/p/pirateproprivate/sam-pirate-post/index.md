@@ -9,7 +9,7 @@ category: "Education"
 tags: ["investing"]
 pubDatetime: "2026-03-20"
 draft: false
-description: "A simple guide to fix indian govt websites"
+description: "A simple guide to fix indian govt sites"
 ---
 # The Bureaucratic Mindset of Indian Govt Websites
 
@@ -18,7 +18,7 @@ There is a famous concept in software engineering called Conway’s Law, which s
 </p>
 
 <p style="text-align: justify">
-L1 Tender - Lowest Bidder procurement system. (Tenders are given to Thugs, Gangsters, Rowdy boys in India.)
+L1 Tender - Lowest Bidder procurement system(Most of the time, Tenders are given to Thugs, Gangsters, Rowdy boys in India.)
 
 For the majority of the static sites, we don't even need the L1 Tender. Website hosting is free, literally. GitHub Pages is free and open source, and they also provide support for all types of organizations, including government organizations. If the government doesn't want to go down that route, it can create its own homelab. Literally, teenagers are doing homelabbing nowadays, leaving big tech.
 </p>
