@@ -6,12 +6,12 @@ author_email: ""
 github_username: "pirateproprivate"
 issue_number: 32
 category: "Cybersecurity"
-tags: ["Privacy", "Security", "Data Protection"]
+tags: ["Privacy", "Data Protection"]
 pubDatetime: "2026-03-19"
 draft: false
 description: "India's Data Laws"
 ---
-# India's Data Laws every Indian must know (DPDP Act, 2023)
+# DPDP Act, 2023
 
 1. As an Indian, You can withdraw consent of any of your data at any time. You have the absolute right to demand that any company show your data, correct, or completely delete your personal details from their systems.
 
