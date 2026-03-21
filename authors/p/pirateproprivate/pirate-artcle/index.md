@@ -7,11 +7,15 @@ github_username: "pirateproprivate"
 issue_number: 32
 category: "Cybersecurity"
 tags: ["Privacy", "Data Protection"]
-pubDatetime: "2026-03-19"
+pubDatetime: "2026-03-21"
 draft: false
 description: "India's Data Laws"
 ---
 # DPDP Act, 2023
+
+<p style="text-align: justify;">
+Whether you're coding in a college hostel, farming in the village, surviving in India, or being a normal Indian citizen living your life, you need to know these laws and question everything like Raghav Chadha in an Indian Assembly.
+</p> 
 
 1. As an Indian, You can withdraw consent of any of your data at any time. You have the absolute right to demand that any company show your data, correct, or completely delete your personal details from their systems.
 
@@ -29,7 +33,7 @@ India should focus on keeping the data inside India, so that the foreign governm
 
 
 <p style="text-align: justify;">
-Whether you're coding in a college hostel, farming in the village, surviving in India, or being a normal Indian citizen living your life, you need to know these laws and question everything like Raghav Chadha in an Indian Assembly.  We already lost 100 billion dollars in the Cybercrime epidemic, and on the top of that, Indian Govt. is doing Section 69 and SIM card bindings focusing on controlling the data within, and to India rather than focusing on data sovereignty laws & regulations. Simple SMS OTPs can be easily hacked. You need to shift to using authenticator apps. You have to actively start questioning the content and the apps you consume. We did not study engineering and sales to put poison in our own food, to spy on ourselves. We did not build AI to diminish us into something we don't want to be. Always be careful of the data that you are feeding to the AI.
+We already lost 100 billion dollars in the Cybercrime epidemic, and on the top of that, Indian Govt is doing Section 69 and SIM card bindings focusing on controlling the data within, and to India rather than focusing on data sovereignty laws & regulations. Simple SMS OTPs can be easily hacked. You need to shift to using authenticator apps. You have to actively start questioning the content and the apps you consume. We did not study engineering and sales to put poison in our own food, to spy on ourselves. We did not build AI to diminish us into something we don't want to be. Always be careful of the data that you are feeding to the AI.
 </p> 
 
 ### Useful Links
