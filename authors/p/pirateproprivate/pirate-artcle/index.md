@@ -1,5 +1,5 @@
 ---
-title: "India's Data Laws every Indian must know"
+title: "India's Data Laws every Indian Citizen must know"
 slug: "pirate-artcle"
 author: "Sam"
 author_email: ""
@@ -7,7 +7,7 @@ github_username: "pirateproprivate"
 issue_number: 32
 category: "Cybersecurity"
 tags: ["Privacy", "Data Protection"]
-pubDatetime: "2026-03-21"
+pubDatetime: "2026-03-23"
 draft: false
 description: "India's Data Laws"
 ---
@@ -17,7 +17,7 @@ description: "India's Data Laws"
 Whether you're coding in a college hostel, farming in the village, surviving in India, or being a normal Indian citizen living your life, you need to know these laws and question everything like Raghav Chadha in an Indian Assembly.
 </p> 
 
-1. As an Indian, You can withdraw consent of any of your data at any time. You have the absolute right to demand that any company show your data, correct, or completely delete your personal details from their systems.
+1. As an Indian Citizen, You can withdraw consent of any of your data at any time. You have the absolute right to demand that any company show your data, correct, or completely delete your personal details from their systems.
 
 2. For non-compliance or failure to maintain reasonable security safeguards, the fine is up to 250 crores for companies.
 

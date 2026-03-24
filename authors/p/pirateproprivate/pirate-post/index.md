@@ -14,7 +14,7 @@ description: "Artificial Super Intelligence"
 # How India Should Think About AI ?
 
 <p style="text-align: justify;">
-India has 1.4 billion people generating an unprecedented amount of linguistic, agricultural, financial, and behavioral data. Instead of building generic models that know a little bit about everything, which requires massive compute, India can build highly specialized, incredibly accurate models based on hyper-local data.India needs highly compressed, specialized Small Language Models (SLMs) that run directly on cheap devices without needing a constant internet connection.
+India has 1.4 billion people generating an unprecedented amount of linguistic, agricultural, financial, and behavioral data. Instead of building generic models that know a little bit about everything, which requires massive compute, India can build highly specialized, incredibly accurate models based on hyper-local data. India needs highly compressed, specialized Small Language Models (SLMs) that run directly on cheap devices without needing a constant internet connection.
 </p>
 
 
