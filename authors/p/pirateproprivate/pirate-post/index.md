@@ -1,13 +1,13 @@
 ---
 title: "How India Should Think About AI ?"
-slug: "pirate-post"
+slug: "how-india-should-think-about-ai ?"
 author: "Pirate"
 author_email: ""
 github_username: "pirateproprivate"
 issue_number: 39
 category: "Artificial Intelligence"
 tags: ["Deep Learning", "Machine Learning", "Natural Language Processing"]
-pubDatetime: "2026-03-21"
+pubDatetime: "2026-03-25"
 draft: false
 description: "Artificial Super Intelligence"
 ---
