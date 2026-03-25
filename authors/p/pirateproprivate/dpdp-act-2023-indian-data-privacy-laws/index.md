@@ -7,7 +7,7 @@ github_username: "pirateproprivate"
 issue_number: 32
 category: "Cybersecurity"
 tags: ["Privacy", "Data Protection"]
-pubDatetime: "2026-03-23"
+pubDatetime: "2026-03-25"
 draft: false
 description: "India's Data Laws"
 ---
@@ -26,6 +26,16 @@ Whether you're coding in a college hostel, farming in the village, surviving in 
 4. If a company messes with your data, you don't need to run around government offices. You can easily file a complaint online through the new [Digital Data Protection Board](https://www.meity.gov.in/).
 
 5. Service providers, Intermediaries, Data centers, Body corporates, and Government Organizations must report **with in 6 Hours** if a data breach or violation happens to CERT-In (Indian Computer Emergency Response Team).
+
+6. ABDM Health Data Management Policy is for digital health records, setting minimum standards for data privacy, security, and interoperability within India's digital health ecosystem.SPDI Rules from 2011 also applies for health data.
+
+7. The RBI heavily regulates financial cybersecurity. YOur CIBIL Score and other related data is regulated by CICRA Act 2005.
+
+8. SEBI Guidelines enforces strict cybersecurity and cyber resilience frameworks for stockbrokers, depository participants, mutual funds, and asset management companies. Companies Act, 2013 & LODR comes under this.
+
+9. Security standards for government entities and the private contractors handling government data are regulated by NISPG Guidelines issued by Ministry of Home Affairs (MHA).
+
+10. For energy sector there is NCIIPC Oversight. There is also IT Act, 2000 for consumer protection. 
 
 <p style="text-align: justify">
 India should focus on keeping the data inside India, so that the foreign governments will not take advantage of the Indian citizens' data and train their AI on them or have an advantage over India by anaylzing Indian citizens' data. Not only this, but we also have zero-day attacks from foreign countries.
