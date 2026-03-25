@@ -7,7 +7,7 @@ github_username: "pirateproprivate"
 issue_number: 32
 category: "Cybersecurity"
 tags: ["Privacy", "Data Protection"]
-pubDatetime: "2026-03-25"
+pubDatetime: "2026-03-23"
 draft: false
 description: "India's Data Laws"
 ---

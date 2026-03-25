@@ -7,7 +7,7 @@ github_username: "pirateproprivate"
 issue_number: 37
 category: "Education"
 tags: ["investing"]
-pubDatetime: "2026-03-24"
+pubDatetime: "2026-03-23"
 draft: false
 description: "A simple guide to fix indian govt sites"
 ---
