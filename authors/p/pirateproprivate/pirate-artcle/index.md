@@ -1,13 +1,13 @@
 ---
 title: "India's Data Laws every Indian Citizen must know"
-slug: "pirate-artcle"
+slug: "dpdp-act-2023-indian-data-privacy-laws"
 author: "Sam"
 author_email: ""
 github_username: "pirateproprivate"
 issue_number: 32
 category: "Cybersecurity"
 tags: ["Privacy", "Data Protection"]
-pubDatetime: "2026-03-23"
+pubDatetime: "2026-03-25"
 draft: false
 description: "India's Data Laws"
 ---
