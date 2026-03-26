@@ -6,7 +6,7 @@ author_email: ""
 github_username: "scientificsam"
 category: "Politics"
 tags: ["leadership", "management","personal development"]
-pubDatetime: "2026-03-24"
+pubDatetime: "2026-03-25"
 draft: false
 description: "How Indian citizens got betrayed forever"
 ---
@@ -15,6 +15,7 @@ description: "How Indian citizens got betrayed forever"
 
 <p style="text-align: justify;">
 India's political parties, politicians, governments, and private organizations continuously manipulate the mindset of citizens, ensuring they remain distracted and entrapped in psychological games from childhood through adulthood.
+</p>
 
 <p style="text-align: justify;">
 The typical environment a child is born into in India is not filled with awe and curiosity about the wonders of the universe, Biology, engineering, Mathematical and physical paradoxes, and Financial and Relationship knowledge.
