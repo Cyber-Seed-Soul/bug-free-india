@@ -6,7 +6,7 @@ author_email: ""
 github_username: "scientificsam"
 category: "Politics"
 tags: ["leadership", "management","personal development"]
-pubDatetime: "2026-03-25"
+pubDatetime: "2026-03-24"
 draft: false
 description: "How Indian citizens got betrayed forever"
 ---
